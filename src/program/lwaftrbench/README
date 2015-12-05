@@ -1,6 +1,20 @@
-Usage: lwaftrbench packet_ipv6.pcap packet_trunk.pcap
+Usage: lwaftrbench [-D seconds] packet_ipv6.pcap packet_ipv4.pcap
 
-  -h, --help
-                             Print usage information.
+  -D      Test duration in seconds. Default is unlimited
 
+Example:
+cd tests
+../../../snabb lwaftrbench -D 5 snabb-port-50k.cfg b4-icmp-request-0138.pcap aftr-icmp-reply-0098.pcap
+Configuration file: snabb-port-50k.cfg
+running for 5 seconds
+offset=0 len=6 -> psmask=0xfc00
+50000 bindings parsed, using 1778 kBytes
+ipv4_to_ipv6:  138 bpp 7.104 MPPS, 7.843 Gbps.
+ipv6_to_ipv4:   98 bpp 7.104 MPPS, 5.570 Gbps.
+ipv4_to_ipv6:  138 bpp 7.183 MPPS, 7.930 Gbps.
+ipv6_to_ipv4:   98 bpp 7.183 MPPS, 5.631 Gbps.
+ipv4_to_ipv6:  138 bpp 7.181 MPPS, 7.928 Gbps.
+ipv6_to_ipv4:   98 bpp 7.181 MPPS, 5.630 Gbps.
+ipv4_to_ipv6:  138 bpp 7.153 MPPS, 7.897 Gbps.
+ipv6_to_ipv4:   98 bpp 7.153 MPPS, 5.608 Gbps.
 
