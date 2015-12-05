@@ -130,6 +130,8 @@ struct {
 -- local ipv4_struct_ctype = ffi.typeof("uint32_t[1]")
 
 local ETHER_HEADER_SIZE = ffi.sizeof(ether_header_struct_ctype)
+local IPV4_HEADER_SIZE  = ffi.sizeof(ipv4_header_struct_ctype)
+local ETHER_IPV4_HEADER_SIZE = ETHER_HEADER_SIZE + IPV4_HEADER_SIZE
 local IPV6_HEADER_SIZE  = ffi.sizeof(ipv6_header_struct_ctype)
 local ETHER_IPV6_HEADER_SIZE = ETHER_HEADER_SIZE + IPV6_HEADER_SIZE
 
@@ -297,11 +299,12 @@ function lwaftr:new (arg)
       local_mac = local_mac,
       remote_ipv4_mac = remote_ipv4_mac,
       shared_psmask = shared_psmask,
-      map_ipv4psid_to_ipv6 = map_ipv4psid_to_ipv6
+      map_ipv4psid_to_ipv6 = map_ipv4psid_to_ipv6,
+      binding_count = count
    }
 
    local memory_delta = collectgarbage("count") - memory_in_use
-   print(string.format("%d bindings parsed, using %.0f kBytes", count, memory_delta))
+   print(string.format("%d bindings parsed, using %d kBytes", count, memory_delta))
    return setmetatable(o, {__index = lwaftr})
 end
 
@@ -321,6 +324,17 @@ function lwaftr:push()
 
        local pether = ffi.cast(pshort_ctype, p.data + ETHERTYPE_OFFSET)
        if lib.ntohs(pether[0]) ~= 0x0800 then
+         break
+       end
+
+       if p.length < ETHER_IPV4_HEADER_SIZE then
+         break
+       end
+
+       -- Hack to pass everything thru if binding table is empty
+       -- Helps with performance measurements
+       if self.binding_count == 0 then
+         drop = false
          break
        end
 
@@ -408,7 +422,9 @@ function lwaftr:push()
        -- remove ethernet header
        packet.shiftleft(p, ETHER_HEADER_SIZE)
        local pchar = ffi.cast(pchar_ctype, self.header + ETHER_HEADER_SIZE + DST_IPV6_OFFSET)
-       ffi.copy(pchar, dst_ipv6, 16)
+       if dst_ipv6 then
+        ffi.copy(pchar, dst_ipv6, 16)
+       end
        packet.prepend(p, self.header, ETHER_HEADER_SIZE + IPV6_HEADER_SIZE)
        local plength = ffi.cast(pshort_ctype, p.data + ETHER_HEADER_SIZE + IPV6_LENGTH_OFFSET)
        plength[0] = lib.htons(p.length - ETHER_HEADER_SIZE - IPV6_HEADER_SIZE)
@@ -430,6 +446,13 @@ function lwaftr:push()
      repeat
 
        if p.length < ETHER_IPV6_HEADER_SIZE then
+         break
+       end
+
+       -- Hack to pass everything thru if binding table is empty
+       -- Helps with performance measurements
+       if self.binding_count == 0 then
+         drop = false
          break
        end
 
