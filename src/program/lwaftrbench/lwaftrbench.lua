@@ -8,6 +8,8 @@ local ethernet = require("lib.protocol.ethernet")
 local lib = require("core.lib")
 local pcap = require("apps.pcap.pcap")
 local lwaftr = require("apps.lwaftr.lwaftr").lwaftr
+local pmu = require('lib.pmu')
+
 
 local long_opts = {
      duration     = "D",
@@ -90,6 +92,25 @@ function run(args)
   c_config.link(c, "ipv4_to_ipv6.output -> sink1.input")
 
   app.configure(c)
+
+  local has_pmu_counters, err = pmu.is_available()
+  local set
+  if has_pmu_counters then
+    pmu.setup({
+      "mem_load_uops_retired.l._hit",
+      "mem_load_uops_retired.l._miss",
+      "mem_load_uops_retired.l3_hit",
+      "mem_load_uops_retired.l3_miss"})
+
+      set = pmu.new_counter_set()
+      pmu.switch_to(set)
+  end
+
   app.main({duration=duration})
+
+  if has_pmu_counters then
+    pmu.switch_to(nil)
+    pmu.report(pmu.to_table(set))
+  end
 
 end

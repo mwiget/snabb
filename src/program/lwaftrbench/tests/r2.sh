@@ -1,8 +1,8 @@
 #!/bin/bash
-DURATION=30
+DURATION=5
 SNABB="taskset -c 0 ../../../snabb"
 
-PCAP2="lwaftr-ipv4-50k.pcap"
+PCAP1="b4-icmp-request-1502.pcap"
 
 if [ "$USER" != "root" ]; then
   echo "$0: need to be root. Try again with sudo $0 ..."
@@ -11,9 +11,10 @@ fi
 
 grep 'model name' /proc/cpuinfo |head -1
 
-for CONFIG in snabb-port-empty.cfg snabb-port-50k.cfg snabb-port-100k.cfg snabb-port-200k.cfg
+for CONFIG in snabb-port-200k.cfg
+#for CONFIG in snabb-port-empty.cfg snabb-port-50k.cfg snabb-port-100k.cfg snabb-port-200k.cfg
 do
-  for PCAP1 in b4-icmp-request-0138.pcap b4-icmp-request-0382.pcap b4-icmp-request-1502.pcap 
+  for PCAP2 in aftr-icmp-reply-0098.pcap lwaftr-ipv4-50k.pcap
   do
     echo "========================================================="
     echo "Running $CONFIG"
