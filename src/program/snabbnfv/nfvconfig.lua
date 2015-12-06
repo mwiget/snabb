@@ -45,15 +45,17 @@ function load (file, pciaddr, sockpath)
                   macaddr = mac_address,
                   vlan = vlan})
 
-      print("sockpath=" .. sockpath)
-      local device_info2 = pci.device_info(sockpath)
-      if device_info2 then
-        -- hack to use a 2nd 10GE port instead of a virtio interface
-        config.app(c, Virtio, require(device_info2.driver).driver,
+      if sockpath:find("0000") then
+        print("try pci.device_info on sockpath=" .. sockpath)
+        local device_info2 = pci.device_info(sockpath)
+        if device_info2 then
+          -- hack to use a 2nd 10GE port instead of a virtio interface
+          config.app(c, Virtio, require(device_info2.driver).driver,
           {pciaddr = sockpath,
           vmdq = false,
           macaddr = nil,
           vlan = nil})
+        end
       else
         config.app(c, Virtio, VhostUser, {socket_path=sockpath:format(t.port_id)})
       end
