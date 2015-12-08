@@ -7,6 +7,7 @@ local ipv6 = require("lib.protocol.ipv6")
 local ethernet = require("lib.protocol.ethernet")
 local lib = require("core.lib")
 local pcap = require("apps.pcap.pcap")
+local pci = require("lib.hardware.pci")
 local lwaftr = require("apps.lwaftr.lwaftr").lwaftr
 local pmu = require('lib.pmu')
 
@@ -72,24 +73,46 @@ function run(args)
     exit(1)
   end
 
-  c_config.app(c, "capture1", pcap.PcapReader, ipv6_pcap)
-  c_config.app(c, "capture2", pcap.PcapReader, trunk_pcap)
-  c_config.app(c, "repeater1", basic_apps.Repeater)
-  c_config.app(c, "repeater2", basic_apps.Repeater)
   c_config.app(c, "ipv4_to_ipv6", basic_apps.Statistics)
   c_config.app(c, "ipv6_to_ipv4", basic_apps.Statistics)
-  c_config.app(c, "sink1", basic_apps.Sink)
-  c_config.app(c, "sink2", basic_apps.Sink)
 
-  c_config.link(c, "capture1.output -> repeater1.input")
-  c_config.link(c, "repeater1.output -> lwaftr.encapsulated")
+  if ipv6_pcap:find("0000") then
+    -- looks like a PCI address to me
+    local device_info1 = pci.device_info(ipv6_pcap)
+    if device_info1 then
+      config.app(c, "pci1", require(device_info1.driver).driver,
+        {pciaddr = ipv6_pcap, vmdq = false, macaddr = nil, vlan = nil})
+    end
+    c_config.link(c, "pci1.tx -> lwaftr.encapsulated")
+    c_config.link(c, "ipv4_to_ipv6.output -> pci1.rx")
+  else
+    c_config.app(c, "capture1", pcap.PcapReader, ipv6_pcap)
+    c_config.app(c, "repeater1", basic_apps.Repeater)
+    c_config.link(c, "repeater1.output -> lwaftr.encapsulated")
+    c_config.link(c, "capture1.output -> repeater1.input")
+    c_config.app(c, "sink1", basic_apps.Sink)
+    c_config.link(c, "ipv4_to_ipv6.output -> sink1.input")
+  end
+  if trunk_pcap:find("0000") then
+    -- looks like a PCI address to me
+    local device_info2 = pci.device_info(trunk_pcap)
+    if device_info2 then
+      config.app(c, "pci2", require(device_info2.driver).driver,
+        {pciaddr = trunk_pcap, vmdq = false, macaddr = nil, vlan = nil})
+    end
+    c_config.link(c, "pci2.tx -> lwaftr.decapsulated")
+    c_config.link(c, "ipv6_to_ipv4.output -> pci2.rx")
+  else
+    c_config.app(c, "capture2", pcap.PcapReader, trunk_pcap)
+    c_config.app(c, "repeater2", basic_apps.Repeater)
+    c_config.link(c, "capture2.output -> repeater2.input")
+    c_config.link(c, "repeater2.output -> lwaftr.decapsulated")
+    c_config.app(c, "sink2", basic_apps.Sink)
+    c_config.link(c, "ipv6_to_ipv4.output -> sink2.input")
+  end
+
   c_config.link(c, "lwaftr.decapsulated -> ipv6_to_ipv4.input")
-  c_config.link(c, "ipv6_to_ipv4.output -> sink2.input")
-
-  c_config.link(c, "capture2.output -> repeater2.input")
-  c_config.link(c, "repeater2.output -> lwaftr.decapsulated")
   c_config.link(c, "lwaftr.encapsulated -> ipv4_to_ipv6.input")
-  c_config.link(c, "ipv4_to_ipv6.output -> sink1.input")
 
   app.configure(c)
 
@@ -97,8 +120,8 @@ function run(args)
   local set
   if has_pmu_counters then
     pmu.setup({
-      "mem_load_uops_retired.l._hit",
-      "mem_load_uops_retired.l._miss",
+      "mem_load_uops_retired.l2.hit",
+      "mem_load_uops_retired.l2.miss",
       "mem_load_uops_retired.l3_hit",
       "mem_load_uops_retired.l3_miss"})
 
