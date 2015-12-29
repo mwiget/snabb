@@ -37,10 +37,13 @@
 -- 
 module(..., package.seeall)
 
+local bit = require("bit")
 local ffi = require("ffi")
 local S = require("syscall")
 local rangemap = require("apps.lwaftr.rangemap")
 local Parser = require("apps.lwaftr.conf_parser").Parser
+
+local band, rshift, lshift = bit.band, bit.rshift, bit.lshift
 
 local address_map_value = ffi.typeof([[
    struct { uint16_t psid_length; uint16_t shift; }
@@ -81,12 +84,12 @@ local function parse(stream)
 end
 
 local function attach_lookup_helper(map)
-   local function port_to_psid(port, psid_len, shift)
-      local psid_mask = lshift(1, psid_len)-1
+   local function port_to_psid(port, psid_length, shift)
+      local psid_mask = lshift(1, psid_length)-1
       local psid = band(rshift(port, shift), psid_mask)
       -- Are there are restricted ports for this address?
-      if psid_len + shift < 16 then
-         local reserved_ports_bit_count = 16 - psid_len - shift
+      if psid_length + shift < 16 then
+         local reserved_ports_bit_count = 16 - psid_length - shift
          local first_allocated_port = lshift(1, reserved_ports_bit_count)
          -- The port is within the range of restricted ports.  Assign a
          -- bogus PSID so that lookup will fail.
@@ -97,8 +100,8 @@ local function attach_lookup_helper(map)
 
    function map:lookup_psid(ipv4, port)
       local psid_info = self:lookup(ipv4).value
-      local psid_len, shift = psid_info.psid_len, psid_info.shift
-      return port_to_psid(port, psid_len, shift)
+      local psid_length, shift = psid_info.psid_length, psid_info.shift
+      return port_to_psid(port, psid_length, shift)
    end
    return map
 end
@@ -109,7 +112,7 @@ function compile(file)
                                                 parser.mtime_sec,
                                                 parser.mtime_nsec)
    local value = address_map_value()
-   for _, entry in ipairs(parser:parse_entries()) do
+   for _, entry in ipairs(parse_address_map(parser)) do
       value.psid_length = entry.psid_length
       value.shift = entry.shift
       for _, range in ipairs(entry.range_list) do
@@ -125,9 +128,10 @@ local function log(msg, ...)
 end
 
 function load(file)
+   local RangeMap = rangemap.RangeMap
    if RangeMap.has_magic(file) then
       log('loading compiled address map from %s', file)
-      return attach_lookup_helper(RangeMap.load(file))
+      return attach_lookup_helper(RangeMap.load(file, address_map_value))
    end
 
    -- If the file doesn't have the magic, assume it's a source file.
@@ -136,12 +140,12 @@ function load(file)
    local compiled = file:gsub("%.txt$", "")..'.map'
    if RangeMap.has_magic(compiled) then
       log('loading compiled address map from %s', compiled)
-      local map = attach_lookup_helper(RangeMap.load(file))
+      local map = attach_lookup_helper(RangeMap.load(compiled, address_map_value))
       local stat = S.stat(file)
-      if (map.mtime_sec ~= stat.st_mtime and
-          map.mtime_nsec ~= stat.st_mtime_nsec) then
+      if (map.mtime_sec == stat.st_mtime and
+          map.mtime_nsec == stat.st_mtime_nsec) then
          -- The compiled file is fresh.
-         log('compiled address map %s is up to date', compiled)
+         log('compiled address map %s is up to date.', compiled)
          return map
       end
       log('compiled address map %s is out of date; recompiling.', compiled)
