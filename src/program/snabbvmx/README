@@ -1,0 +1,8 @@
+Usage:
+  snabbvmx run
+  snabbvmx bench
+
+Use --help for per-command usage.
+
+Example:
+    snabbvmx run --help

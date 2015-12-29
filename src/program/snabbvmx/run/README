@@ -1,0 +1,21 @@
+Usage: run --help
+run --v4-port <port-id> --v4-pci <pci-addr> --v4-mac <mac address> \
+    --v6-port <port-id> --v6-pci <pci-addr> --v6-mac <mac address> \
+    --user <netconf user> --ip <netconf ip> --identity <private-key file> \
+    --sock <socket-path> [-D <seconds>] [-v] [-u]
+
+  --v4-port <port-id>      port_id for virtio socket of INET-side
+  --v4-pci <pci-addr>      PCI device number for the INET-side NIC
+  --v4-mac <mac address>   Ethernet address of virtio interface of INET-side
+  --v6-port <port-id>      port_id for virtio socket of B4-side
+  --v6-pci <pci-addr>      PCI device number for the B4-side NIC
+  --v6-mac <mac address>   Ethernet address of virtio interface of B4-side
+  --sock   <socket-path>   Socket path for virtio-user interfaces
+  --user   <netconf user>  username to access the vRE via netconf
+  --ip     <netconf ip>    netconf ip address of vRE
+  --identity <keyfile>     private ssh keyfile for to access via netconf
+  -D       <seconds>       Duration in seconds
+  -v                       Verbose (repeat for more verbosity)
+
+Example config file:
+
