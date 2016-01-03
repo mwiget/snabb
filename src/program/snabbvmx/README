@@ -1,6 +1,5 @@
 Usage:
-  snabbvmx run
-  snabbvmx bench
+  snabbvmx lwaftr
 
 Use --help for per-command usage.
 

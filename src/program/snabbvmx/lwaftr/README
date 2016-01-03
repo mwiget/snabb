@@ -1,19 +1,16 @@
-Usage: run --help
-run --v4-port <port-id> --v4-pci <pci-addr> --v4-mac <mac address> \
-    --v6-port <port-id> --v6-pci <pci-addr> --v6-mac <mac address> \
-    --user <netconf user> --ip <netconf ip> --identity <private-key file> \
+Usage: lwaftr --help
+run --conf <config-file> --v1id <port-id> --v1pci <pci-addr> --v1mac <mac address> \
+    --v2id <port-id> --v2pci <pci-addr> --v2mac <mac address> \
     --sock <socket-path> [-D <seconds>] [-v] [-u]
 
-  --v4-port <port-id>      port_id for virtio socket of INET-side
-  --v4-pci <pci-addr>      PCI device number for the INET-side NIC
-  --v4-mac <mac address>   Ethernet address of virtio interface of INET-side
-  --v6-port <port-id>      port_id for virtio socket of B4-side
-  --v6-pci <pci-addr>      PCI device number for the B4-side NIC
-  --v6-mac <mac address>   Ethernet address of virtio interface of B4-side
+  --conf   <config-file>   configuration file for lwaftr service
+  --v1id   <port-id>       port_id for virtio socket of INET-side
+  --v1pci  <pci-addr>      PCI device number for the INET-side NIC
+  --v1mac  <mac address>   Ethernet address of virtio interface of INET-side
+  --v2id   <port-id>       port_id for virtio socket of B4-side
+  --v2pci  <pci-addr>      PCI device number for the B4-side NIC
+  --v2mac  <mac address>   Ethernet address of virtio interface of B4-side
   --sock   <socket-path>   Socket path for virtio-user interfaces
-  --user   <netconf user>  username to access the vRE via netconf
-  --ip     <netconf ip>    netconf ip address of vRE
-  --identity <keyfile>     private ssh keyfile for to access via netconf
   -D       <seconds>       Duration in seconds
   -v                       Verbose (repeat for more verbosity)
 

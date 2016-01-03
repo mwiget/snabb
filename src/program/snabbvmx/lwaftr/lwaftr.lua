@@ -2,22 +2,14 @@ module(..., package.seeall)
 
 local S          = require("syscall")
 local lib        = require("core.lib")
--- local ethernet   = require("lib.protocol.ethernet")
--- local Intel82599 = require("apps.intel.intel_app").Intel82599
--- local basic_apps = require("apps.basic.basic_apps")
--- local bt         = require("apps.lwaftr.binding_table")
--- local conf       = require("apps.lwaftr.conf")
--- local lwaftr     = require("apps.lwaftr.lwaftr")
+local lwaftr_conf       = require("apps.lwaftr.conf")
 local pci = require("lib.hardware.pci")
 local VhostUser = require("apps.vhost.vhost_user").VhostUser
--- local PcapFilter = require("apps.packet_filter.pcap_filter").PcapFilter
--- local RateLimiter = require("apps.rate_limiter.rate_limiter").RateLimiter
 local nh_fwd = require("apps.juniper.nh_fwd").nh_fwd
-local conf   = require("apps.juniper.ssh_conf")
 local lwaftr = require("apps.lwaftr.lwaftr").LwAftr
 
 local function show_usage(exit_code)
-   print(require("program.snabbvmx.run.README_inc"))
+   print(require("program.snabbvmx.lwaftr.README_inc"))
    if exit_code then main.exit(exit_code) end
 end
 
@@ -32,54 +24,58 @@ local function file_exists(path)
    return stat and stat.isreg
 end
 
-local function dir_exists(path)
-   local stat = S.stat(path)
-   return stat and stat.isdir
-end
-
-local function nic_exists(pci_addr)
-   local devices="/sys/bus/pci/devices"
-   return dir_exists(("%s/%s"):format(devices, pci_addr)) or
-      dir_exists(("%s/0000:%s"):format(devices, pci_addr))
-end
-
 function parse_args(args)
    if #args == 0 then show_usage(1) end
-   local v4_port, v6_port, v4_pci, v6_pci, v4_mac, v6_mac, sock_path, ip, user, identity
+   local conf_file, sock_path, v1id, v1pci, v1mac, v2id, v2pci, v2mac
    local opts = { verbosity = 0 }
    local handlers = {}
    function handlers.v () opts.verbosity = opts.verbosity + 1 end
    function handlers.D (arg)
       opts.duration = assert(tonumber(arg), "duration must be a number")
    end
-   function handlers.p(arg)
-      v6_port = arg
+   function handlers.c(arg)
+     conf_file = arg
+     if not arg then
+       fatal("Argument '--conf' was not set")
+     end
+     if not file_exists(conf_file) then
+       fatal(("Couldn't locate configuration file at %s"):format(conf_file))
+     end
+   end
+   function handlers.e(arg)
+      v1id = arg
       if not arg then
-         fatal("Argument '--v6-port' was not set")
+         fatal("Argument '--v1id' was not set")
       end
    end
-   function handlers.q(arg)
-      v4_port = arg
+   function handlers.f(arg)
+      v1pci = arg
       if not arg then
-         fatal("Argument '--v4-port' was not set")
+         fatal("Argument '--v1pci' was not set")
       end
    end
-   function handlers.n(arg)
-      v4_pci = arg
+   function handlers.g(arg)
+      v1mac = arg
       if not arg then
-         fatal("Argument '--v4-pci' was not set")
-      end
-      if not nic_exists(v4_pci) then
-         fatal(("Couldn't locate NIC with PCI address '%s'"):format(v4_pci))
+         fatal("Argument '--v1mac' was not set")
       end
    end
-   function handlers.m(arg)
-      v6_pci = arg
-      if not v6_pci then
-         fatal("Argument '--v6-pci' was not set")
+   function handlers.i(arg)
+      v2id = arg
+      if not arg then
+         fatal("Argument '--v2id' was not set")
       end
-      if not nic_exists(v6_pci) then
-         fatal(("Couldn't locate NIC with PCI address '%s'"):format(v6_pci))
+   end
+   function handlers.j(arg)
+      v2pci = arg
+      if not arg then
+         fatal("Argument '--v2pci' was not set")
+      end
+   end
+   function handlers.k(arg)
+      v2mac = arg
+      if not arg then
+         fatal("Argument '--v2mac' was not set")
       end
    end
    function handlers.s(arg)
@@ -88,121 +84,84 @@ function parse_args(args)
          fatal("Argument '--sock' was not set")
       end
    end
-   function handlers.a(arg)
-      v4_mac = arg
-      if not arg then
-         fatal("Argument '--v4-mac' was not set")
-      end
-   end
-   function handlers.b(arg)
-      v6_mac = arg
-      if not arg then
-         fatal("Argument '--v6-mac' was not set")
-      end
-   end
-   function handlers.u(arg)
-      user = arg
-      if not arg then
-         fatal("Argument '--user' was not set")
-      end
-   end
-   function handlers.i(arg)
-      ip = arg
-      if not arg then
-         fatal("Argument '--ip' was not set")
-      end
-   end
-   function handlers.y(arg)
-      identity = arg
-      if not arg then
-         fatal("Argument '--identity' was not set (netconf/ssh private key)")
-      end
-   end
    function handlers.h() show_usage(0) end
-   lib.dogetopt(args, handlers, "n:m:q:p:a:b:u:i:y:s:vD:h",
-      { ["v4-pci"] = "n", ["v6-pci"] = "m",
-        ["v4-port"] = "q", ["v6-port"] = "p",
-        ["v4-mac"] = "a", ["v6-mac"] = "b",
-        ["user"] = "u", ["ip"] = "i", ["identity"] = "y",
-        ["sock"] = "s", verbose = "v", duration = "D", help = "h" })
-   return opts, v4_pci, v6_pci, v4_port, v6_port, v4_mac, v6_mac, user, ip, identity, sock_path
+   lib.dogetopt(args, handlers, "c:s:e:f:g:i:j:k:vD:h",
+      { ["conf"] = "c", ["sock"] = "s",
+        ["v1id"] = "e", ["v1pci"] = "f", ["v1mac"] = "g",
+        ["v2id"] = "i", ["v2pci"] = "j", ["v2mac"] = "k",
+        verbose = "v", duration = "D", help = "h" })
+   return opts, conf_file, v1id, v1pci, v1mac, v2id, v2pci, v2mac, sock_path
 end
 
 function run(args)
-   local opts, v4_pci, v6_pci, v4_port, v6_port, v4_mac, v6_mac, user, ip, identity, sock_path = parse_args(args)
-   local aftrconf = conf.get_aftrconf(v6_port, v4_port, ip, user, identity)
-   aftrconf.ipv4_interface.mac_address = v4_mac
-   aftrconf.ipv6_interface.mac_address = v6_mac
-   aftrconf.ipv4_interface.port_id = v4_port
-   aftrconf.ipv6_interface.port_id = v6_port
+   local opts, conf_file, v1id, v1pci, v1mac, v2id, v2pci, v2mac, sock_path = parse_args(args)
+   if not file_exists(conf_file) then
+     fatal(("conf file %s is missing. Use --conf <config-file>"):format(conf_file))
+   end
+   local conf = lib.load_conf(conf_file)
+   if not file_exists(conf.lwaftr) then
+     fatal(("lwaftr conf file %s is missing"):format(conf.lwaftr))
+   end
 
    local c = config.new()
 
-   if aftrconf.ipv6_interface then
-     local si = aftrconf.ipv6_interface
-     local vlan, mac_address = si.vlan, si.mac_address
+   if conf.ipv6_interface then
+     local si = conf.ipv6_interface
      local vmdq = true
-     if not mac_address then
-       fatal("mac_address is missing for ipv6_interface")
-     end
-     if vlan then
-       vlan = tonumber(vlan)
-     end
-     if si.mtu then
-       print(string.format("ipv6 mtu is set to %d", si.mtu))
-     end
-     config.app(c, "nh_fwd1", nh_fwd, aftrconf.ipv6_interface)
-     local VM = si.port_id
+     local vlan = si.vlan and tonumber(si.vlan)
+     si.mac_address = v1mac
+     config.app(c, "nh_fwd1", nh_fwd, conf.ipv6_interface)
+     local VM = v1id
      if VM then
-       print("v6 side VM=" .. VM)
-       print("socket_path=" .. sock_path:format(si.port_id))
-       config.app(c, VM, VhostUser, {socket_path=sock_path:format(si.port_id)})
+       config.app(c, VM, VhostUser, {socket_path=sock_path:format(v1id)})
        config.link(c, VM .. ".tx -> nh_fwd1.vmx")
        config.link(c, "nh_fwd1.vmx -> " ..VM .. ".rx")
      end
-     if v6_pci ~= "0000:00:00.0" then
-       local device_info = pci.device_info(v6_pci)
+     if v1pci ~= "0000:00:00.0" then
+       local device_info = pci.device_info(v1pci)
        if not device_info then 
-         fatal(("Couldn't find device information for PCI address '%s'"):format(v6_pci))
+         fatal(("Couldn't find device information for PCI address '%s'"):format(v1pci))
        end
        config.app(c, "v6nic", require(device_info.driver).driver,
-       {pciaddr = v6_pci, vmdq = vmdq, vlan = vlan, macaddr = mac_address})
+       {pciaddr = v1pci, vmdq = vmdq, vlan = vlan, macaddr = v1mac})
        config.link(c, "v6nic.tx -> nh_fwd1.wire")
        config.link(c, "nh_fwd1.wire -> v6nic.rx")
      end
    end
 
-   if aftrconf.ipv4_interface then
-     local si = aftrconf.ipv4_interface
-     local vlan, mac_address = si.vlan, si.mac_address
+   if conf.ipv4_interface then
+     local si = conf.ipv4_interface
+     local vlan = si.vlan and tonumber(si.vlan)
      local vmdq = true
-     if not mac_address then
-       fatal("mac_address is missing for ipv4_interface")
-     end
-     if vlan then
-       vlan = tonumber(vlan)
-     end
-     config.app(c, "nh_fwd2", nh_fwd, aftrconf.ipv4_interface)
-     local VM = si.port_id
+     si.mac_address = v2mac
+     config.app(c, "nh_fwd2", nh_fwd, conf.ipv4_interface)
+     local VM = v2id
      if VM then
-       print("v4 side VM=" .. VM)
-       print("socket_path=" .. sock_path:format(si.port_id))
-       config.app(c, VM, VhostUser, {socket_path=sock_path:format(si.port_id)})
+       config.app(c, VM, VhostUser, {socket_path=sock_path:format(v2id)})
        config.link(c, VM .. ".tx -> nh_fwd2.vmx")
        config.link(c, "nh_fwd2.vmx -> " ..VM .. ".rx")
      end
-     if v4_pci ~= "0000:00:00.0" then
-       local device_info = pci.device_info(v4_pci)
+     if v2pci ~= "0000:00:00.0" then
+       local device_info = pci.device_info(v2pci)
        if not device_info then 
-         fatal(("Couldn't find device information for PCI address '%s'"):format(v4_pci))
+         fatal(("Couldn't find device information for PCI address '%s'"):format(v2pci))
        end
        config.app(c, "v4nic", require(device_info.driver).driver,
-       {pciaddr = v4_pci, vmdq = vmdq, vlan = vlan, macaddr = mac_address})
+       {pciaddr = v2pci, vmdq = vmdq, vlan = vlan, macaddr = v2mac})
        config.link(c, "v4nic.tx -> nh_fwd2.wire")
        config.link(c, "nh_fwd2.wire -> v4nic.rx")
      end
    end
-   config.app(c, "lwaftr", lwaftr, aftrconf)
+
+   local lwconf = lwaftr_conf.load_lwaftr_config(conf.lwaftr)
+   if not file_exists(lwconf.address_map) then
+     fatal(("Couldn't locate address_map file at %s"):format(lwconf.address_map))
+   end
+   if not file_exists(lwconf.binding_table) then
+     fatal(("Couldn't locate binding_table file at %s"):format(lwconf.binding_table))
+   end
+
+   config.app(c, "lwaftr", lwaftr, lwconf)
    config.link(c, 'nh_fwd1.lwaftr -> lwaftr.v6')
    config.link(c, 'nh_fwd2.lwaftr -> lwaftr.v4')
    config.link(c, 'lwaftr.v4 -> nh_fwd2.lwaftr')

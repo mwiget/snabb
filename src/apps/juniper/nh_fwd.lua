@@ -22,6 +22,7 @@ function nh_fwd:new(arg)
   local ipv6_address = conf.ipv6_address
   local ipv4_address = conf.ipv4_address
   local next_hop_mac = conf.next_hop_mac and ethernet:pton(conf.next_hop_mac)
+  local service_mac = conf.service_mac and ethernet:pton(conf.service_mac)
   local next_hop_cache = conf.next_hop_cache
   -- default cache refresh interval set to 30 seconds
   local cache_refresh_interval = conf.cache_refresh_interval or 30
@@ -37,6 +38,7 @@ function nh_fwd:new(arg)
     ipv6_address = ipv6_address,
     description = description,
     next_hop_cache = next_hop_cache,
+    service_mac = service_mac,
     cache_refresh_time = tonumber(app.now()),
     cache_refresh_interval = cache_refresh_interval
   }
@@ -55,8 +57,6 @@ function nh_fwd:push ()
   local ETH_HDR_SIZE = 14
   local IPV4_HDR_SIZE  = 20
   local IPV6_HDR_SIZE  = 40
-
-  local service_mac = ethernet:pton("44:44:44:44:44:44")
 
   -- packets from wire
   local input = self.input.wire
@@ -131,7 +131,7 @@ function nh_fwd:push ()
       local eth_header = ethernet:new_from_mem(p.data, ETH_HDR_SIZE)
       local output = self.output.wire
       local ether_type = eth_header:type()
-      if eth_header:dst_eq(service_mac) then
+      if self.service_mac and eth_header:dst_eq(self.service_mac) then
         output = self.output.lwaftr
       else
         -- learn nh mac
