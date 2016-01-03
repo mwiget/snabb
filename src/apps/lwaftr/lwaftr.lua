@@ -1,5 +1,6 @@
 module(..., package.seeall)
 
+local address_map = require("apps.lwaftr.address_map")
 local bt = require("apps.lwaftr.binding_table")
 local constants = require("apps.lwaftr.constants")
 local dump = require('apps.lwaftr.dump')
@@ -96,25 +97,47 @@ local function on_signal(sig, f)
 end
 
 local function reload_binding_table(lwstate)
-   if not lwstate.bt_file then return end
    print("Reload binding table")
-   lwstate.binding_table = bt.load_binding_table(lwstate.bt_file)
+   lwstate.binding_table = bt.load_binding_table(lwstate.conf.binding_table)
    lwstate.binding_table_by_ipv4 = compute_binding_table_by_ipv4(lwstate.binding_table)
 end
 
 LwAftr = {}
 
 function LwAftr:new(conf)
+   if type(conf) == 'string' then
+      conf = lwconf.load_lwaftr_config(conf)
+   end
    if conf.debug then debug = true end
    local o = {}
-   for k,v in pairs(conf) do
-      o[k] = v
-   end
+   o.conf = conf
+
+   -- FIXME: Access these from the conf instead of splatting them onto
+   -- the lwaftr app, if there is no performance impact.
+   o.aftr_ipv4_ip = conf.aftr_ipv4_ip
+   o.aftr_ipv6_ip = conf.aftr_ipv6_ip
+   o.aftr_mac_b4_side = conf.aftr_mac_b4_side
+   o.aftr_mac_inet_side = conf.aftr_mac_inet_side
+   o.b4_mac = conf.b4_mac
+   o.hairpinning = conf.hairpinning
+   o.icmpv6_rate_limiter_n_packets = conf.icmpv6_rate_limiter_n_packets
+   o.icmpv6_rate_limiter_n_seconds = conf.icmpv6_rate_limiter_n_seconds
+   o.inet_mac = conf.inet_mac
+   o.ipv4_mtu = conf.ipv4_mtu
+   o.ipv6_mtu = conf.ipv6_mtu
+   o.policy_icmpv4_incoming = conf.policy_icmpv4_incoming
+   o.policy_icmpv4_outgoing = conf.policy_icmpv4_outgoing
+   o.policy_icmpv6_incoming = conf.policy_icmpv6_incoming
+   o.policy_icmpv6_outgoing = conf.policy_icmpv6_outgoing
+   o.v4_vlan_tag = conf.v4_vlan_tag
+   o.v6_vlan_tag = conf.v6_vlan_tag
+   o.vlan_tagging = conf.vlan_tagging
+
+   o.binding_table = bt.load_binding_table(conf.binding_table)
+   o.binding_table_by_ipv4 = compute_binding_table_by_ipv4(o.binding_table)
+   o.psid_info_map = address_map.load(conf.address_map)
+
    if conf.vlan_tagging then
-      assert(o.v4_vlan_tag > 0 and o.v4_vlan_tag < 4096,
-         "VLAN tag should be a value between 0 and 4095")
-      assert(o.v6_vlan_tag > 0 and o.v6_vlan_tag < 4096,
-         "VLAN tag should be a value between 0 and 4095")
       o.l2_size = constants.ethernet_header_size + 4
       o.o_ethernet_tag = constants.o_ethernet_ethertype
       o.o_ethernet_ethertype = constants.o_ethernet_ethertype + 4
@@ -124,7 +147,6 @@ function LwAftr:new(conf)
       o.l2_size = constants.ethernet_header_size
       o.o_ethernet_ethertype = constants.o_ethernet_ethertype
    end
-   o.binding_table_by_ipv4 = compute_binding_table_by_ipv4(o.binding_table)
    o.fragment6_cache = {}
    o.fragment4_cache = {}
    transmit_icmpv6_with_rate_limit = init_transmit_icmpv6_with_rate_limit(o)
@@ -133,7 +155,6 @@ function LwAftr:new(conf)
       dump.dump_configuration(o)
       dump.dump_binding_table(o)
    end)
-   o.conf_keys = keys(conf)
    if debug then lwdebug.pp(conf) end
    return setmetatable(o, {__index=LwAftr})
 end
@@ -168,7 +189,7 @@ local function decrement_ttl(lwstate, pkt)
 end
 
 local function get_lwAFTR_ipv6(lwstate, binding_entry)
-   local lwaftr_ipv6 = binding_entry[5]
+   local lwaftr_ipv6 = binding_entry[4]
    if not lwaftr_ipv6 then lwaftr_ipv6 = lwstate.aftr_ipv6_ip end
    return lwaftr_ipv6
 end
@@ -179,11 +200,14 @@ local function binding_lookup_ipv4(lwstate, ipv4_ip, port)
       print(lwdebug.format_ipv4(ipv4_ip), 'port: ', port, string.format("%x", port))
       lwdebug.pp(lwstate.binding_table)
    end
+   local host_endian_ipv4 = C.ntohl(ipv4_ip)
+   local psid = lwstate.psid_info_map:lookup_psid(host_endian_ipv4, port)
    for i=1,#lwstate.binding_table do
       local bind = lwstate.binding_table[i]
       if debug then print("CHECK", string.format("%x, %x", bind[2], ipv4_ip)) end
       if bind[2] == ipv4_ip then
-         if port >= bind[3] and port <= bind[4] then
+         local psid_info = bind[3]
+         if psid_info.psid == psid then
             local lwaftr_ipv6 = get_lwAFTR_ipv6(lwstate, bind)
             return bind[1], lwaftr_ipv6
          end
@@ -227,6 +251,8 @@ end
 -- Todo: make this O(1)
 local function in_binding_table(lwstate, ipv6_src_ip, ipv6_dst_ip, ipv4_src_ip, ipv4_src_port)
    local binding_table = lwstate.binding_table
+   local host_endian_ipv4 = C.ntohl(ipv4_src_ip)
+   local psid = lwstate.psid_info_map:lookup_psid(host_endian_ipv4, ipv4_src_port)
    for i=1,#binding_table do
       local bind = binding_table[i]
       if debug then
@@ -235,7 +261,8 @@ local function in_binding_table(lwstate, ipv6_src_ip, ipv6_dst_ip, ipv4_src_ip, 
                lwdebug.format_ipv4(C.ntohl(ipv4_src_ip)), ipv4_src_port))
       end
       if bind[2] == ipv4_src_ip then
-         if ipv4_src_port >= bind[3] and ipv4_src_port <= bind[4] then
+         local psid_info = bind[3]
+         if psid_info.psid == psid then
             if debug then
                print("ipv6bind")
                lwdebug.print_ipv6(bind[1])
