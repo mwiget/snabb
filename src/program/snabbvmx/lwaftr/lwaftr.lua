@@ -38,9 +38,6 @@ function parse_args(args)
      if not arg then
        fatal("Argument '--conf' was not set")
      end
-     if not file_exists(conf_file) then
-       fatal(("Couldn't locate configuration file at %s"):format(conf_file))
-     end
    end
    function handlers.e(arg)
       v1id = arg
@@ -95,12 +92,16 @@ end
 
 function run(args)
    local opts, conf_file, v1id, v1pci, v1mac, v2id, v2pci, v2mac, sock_path = parse_args(args)
+   local conf = {}
    if not file_exists(conf_file) then
-     fatal(("conf file %s is missing. Use --conf <config-file>"):format(conf_file))
-   end
-   local conf = lib.load_conf(conf_file)
-   if not file_exists(conf.lwaftr) then
-     fatal(("lwaftr conf file %s is missing"):format(conf.lwaftr))
+     print("warning: running in passthru mode without a config file")
+     conf = { ipv6_interface = { ipv6_address = "fc00::99" },
+              ipv4_interface = { ipv4_address = "10.0.1.99" }}
+   else
+     conf = lib.load_conf(conf_file)
+     if not file_exists(conf.lwaftr) then
+       fatal(("lwaftr conf file %s is missing"):format(conf.lwaftr))
+     end
    end
 
    local c = config.new()
@@ -153,19 +154,25 @@ function run(args)
      end
    end
 
-   local lwconf = lwaftr_conf.load_lwaftr_config(conf.lwaftr)
-   if not file_exists(lwconf.address_map) then
-     fatal(("Couldn't locate address_map file at %s"):format(lwconf.address_map))
-   end
-   if not file_exists(lwconf.binding_table) then
-     fatal(("Couldn't locate binding_table file at %s"):format(lwconf.binding_table))
-   end
+   if conf.lwaftr then
+     local lwconf = lwaftr_conf.load_lwaftr_config(conf.lwaftr)
+     if not file_exists(lwconf.address_map) then
+       fatal(("Couldn't locate address_map file at %s"):format(lwconf.address_map))
+     end
+     if not file_exists(lwconf.binding_table) then
+       fatal(("Couldn't locate binding_table file at %s"):format(lwconf.binding_table))
+     end
 
-   config.app(c, "lwaftr", lwaftr, lwconf)
-   config.link(c, 'nh_fwd1.lwaftr -> lwaftr.v6')
-   config.link(c, 'nh_fwd2.lwaftr -> lwaftr.v4')
-   config.link(c, 'lwaftr.v4 -> nh_fwd2.lwaftr')
-   config.link(c, 'lwaftr.v6 -> nh_fwd1.lwaftr')
+     config.app(c, "lwaftr", lwaftr, lwconf)
+     config.link(c, 'nh_fwd1.lwaftr -> lwaftr.v6')
+     config.link(c, 'nh_fwd2.lwaftr -> lwaftr.v4')
+     config.link(c, 'lwaftr.v4 -> nh_fwd2.lwaftr')
+     config.link(c, 'lwaftr.v6 -> nh_fwd1.lwaftr')
+   else
+     -- bypass lwaftr. We don't have a config for lwaftr.
+     config.link(c, 'nh_fwd1.lwaftr -> nh_fwd2.lwaftr')
+     config.link(c, 'nh_fwd2.lwaftr -> nh_fwd1.lwaftr')
+   end
 
    engine.configure(c)
 
