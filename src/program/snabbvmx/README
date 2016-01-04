@@ -4,4 +4,4 @@ Usage:
 Use --help for per-command usage.
 
 Example:
-    snabbvmx run --help
+    snabbvmx lwaftr --help
