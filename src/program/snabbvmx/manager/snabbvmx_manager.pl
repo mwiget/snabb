@@ -3,6 +3,22 @@
 my $ip=shift;
 my $identity=shift;
 
+sub file_changed {
+  my ($file) = @_;
+  my $new = "$file.new";
+  print("compare file $file with $new ...\n");
+  my $delta = `/usr/bin/diff $file $new 2>&1`;
+  if ($delta eq "") {
+    print("nothing new in $file\n");
+    return 0;
+  } else {
+    print("file $file has changed\n");
+    unlink $file;
+    rename $new, $file;
+    return 1;
+  }
+}
+
 sub process_new_config {
   my ($file) = @_;
   open IN,"$file" or die $@;
@@ -18,16 +34,16 @@ sub process_new_config {
       if ("" ne $snabbvmx_config_file) {
         # TODO close files correctly. We have more than one group to handle!!
       }
-      $snabbvmx_config_file = "$1.cfg.new";
-      $snabbvmx_lwaftr_file = "$1.conf.new";
-      $snabbvmx_binding_file = "$1.binding.new";
-      $snabbvmx_address_file = "$1.address.new";
+      $snabbvmx_config_file = "$1.cfg";
+      $snabbvmx_lwaftr_file = "$1.conf";
+      $snabbvmx_binding_file = "$1.binding";
+      $snabbvmx_address_file = "$1.address";
       print("new snabbvmx config file $snabbvmx_config_file\n");
-      open CFG,">$snabbvmx_config_file" or die $@;
-      open LWA,">$snabbvmx_lwaftr_file" or die $@;
-      open BDG,">$snabbvmx_binding_file" or die $@;
+      open CFG,">$snabbvmx_config_file.new" or die $@;
+      open LWA,">$snabbvmx_lwaftr_file.new" or die $@;
+      open BDG,">$snabbvmx_binding_file.new" or die $@;
       print BDG "{\n";
-      open ADR,">$snabbvmx_address_file" or die $@;
+      open ADR,">$snabbvmx_address_file.new" or die $@;
       print CFG "return {\n  lwaftr = \"$snabbvmx_lwaftr_file\",\n";
       print LWA "address_map = $snabbvmx_address_file,\n";
       print LWA "binding_table = $snabbvmx_binding_file,\n";
@@ -76,8 +92,9 @@ sub process_new_config {
       print LWA "hairpinning = true,\n";
     } elsif (/([\w:]+)+\s+(\d+.\d+.\d+.\d+),(\d+),(\d+),(\d+)/) {
       # binding entry ipv6 ipv4,psid,psid_len,shift
-      print BDG " {'$1', '$2', {psid=$3, psid_len=$4, shift=$5}},\n";
-      $addresses{"$2"} = "{psid_len=$4, shift=$5}";
+      my $shift=16 - $4 - $5;
+      print BDG " {'$1', '$2', {psid=$3, psid_len=$4, shift=$shift}},\n";
+      $addresses{"$2"} = "{psid_length=$4, shift=$shift}";
     }
   }
 
@@ -98,7 +115,20 @@ sub process_new_config {
   close ADR;
 
   # compare the generated files and kick snabbvmx accordingly!
-  
+  my $signal = 0;   # default is no change, no signal needed
+  if (&file_changed($snabbvmx_address_file) +
+    &file_changed($snabbvmx_binding_file) > 0) {
+    print("Binding table changed. Signal snabbvmx ...\n");
+    $signal=1; # HUP
+  }
+  if (&file_changed($snabbvmx_config_file) +
+    &file_changed($snabbvmx_lwaftr_file) > 0) {
+    print("Configs have changed. Need to restart snabbvmx ...\n");
+    $signal=3; # QUIT
+  }
+  if ($signal > 0) {
+    `pkill -$signal -f 'snabb snabbvmx'`;
+  }
 }
 
 sub check_config {
@@ -128,7 +158,6 @@ while (defined($line=<CMD>)) {
   if ($line =~ /<syslog-events>/ || $line =~ /UI_COMMIT_COMPLETED/) {
     print("check for config change...\n");
     &check_config();
-    #   `pkill --signal $signal -f 'snabb snabbvmx'`;
 
   }
 }
