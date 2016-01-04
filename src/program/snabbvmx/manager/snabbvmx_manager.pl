@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+# will be replaced with a Junos JET based script once available
+
 my $ip=shift;
 my $identity=shift;
 
