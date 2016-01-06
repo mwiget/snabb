@@ -3,12 +3,14 @@ module(..., package.seeall)
 local constants = require("apps.lwaftr.constants")
 local ethernet = require("lib.protocol.ethernet")
 local ffi = require("ffi")
+local bit = require("bit")
 local ipv6 = require("lib.protocol.ipv6")
 local lib = require("core.lib")
 local lwutil = require("apps.lwaftr.lwutil")
 
 local cast = ffi.cast
 local bitfield = lib.bitfield
+local bor, lshift = bit.bor, bit.lshift
 local wr16, wr32 = lwutil.wr16, lwutil.wr32
 local htons, htonl = lwutil.htons, lwutil.htonl
 local ntohs, ntohl = htons, htonl
@@ -32,14 +34,20 @@ function write_eth_header(dst_ptr, ether_src, ether_dst, eth_type, vlan_tag)
    end
 end
 
+local function v_tc_fl(version, traffic_class, flow_label)
+   return htonl(bor(version,
+                    bor(lshift(traffic_class, 4),
+                        lshift(flow_label, 12))))
+end
+
+local ipv6_header_size = ffi.sizeof(ipv6._header_type)
+local default_ttl = constants.default_ttl
 function write_ipv6_header(dst_ptr, ipv6_src, ipv6_dst, dscp_and_ecn, next_hdr_type, payload_length)
    local ipv6_hdr = cast(ipv6._header_ptr_type, dst_ptr)
-   ffi.fill(ipv6_hdr, ffi.sizeof(ipv6_hdr), 0)
-   bitfield(32, ipv6_hdr, 'v_tc_fl', 0, 4, 6)            -- IPv6 Version
-   bitfield(32, ipv6_hdr, 'v_tc_fl', 4, 8, dscp_and_ecn) -- Traffic class
+   ipv6_hdr.v_tc_fl = v_tc_fl(6, dscp_and_ecn, 0)
    ipv6_hdr.payload_length = htons(payload_length)
    ipv6_hdr.next_header = next_hdr_type
-   ipv6_hdr.hop_limit = constants.default_ttl
+   ipv6_hdr.hop_limit = default_ttl
    ipv6_hdr.src_ip = ipv6_src
    ipv6_hdr.dst_ip = ipv6_dst
 end
