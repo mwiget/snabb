@@ -18,8 +18,8 @@ function run(args)
   local duration
   function opt.D (arg) duration = tonumber(arg)  end
   args = lib.dogetopt(args, opt, "D:", long_opts)
-  if not (#args == 4) then
-    print("Usage: pcibench [-D seconds] <pcap1> <pci1> <pcap2> <pci2>")
+  if not (#args == 4 or #args == 2) then
+    print("Usage: pcibench [-D seconds] <pcap1> <pci1> [<pcap2> <pci2>]")
     main.exit(1)
   end
 
@@ -36,35 +36,46 @@ function run(args)
     main.exit(1)
   end
 
-  local device_info2 = pci.device_info(pciaddr2)
-  if not device_info2 then
-    print(format("could not find device information for PCI address %s", pciaddr2))
-    main.exit(1)
+  if pciaddr2 then
+    local device_info2 = pci.device_info(pciaddr2)
+    if not device_info2 then
+      print(format("could not find device information for PCI address %s", pciaddr2))
+      main.exit(1)
+    end
   end
 
   config.app(c, "pci1", require(device_info1.driver).driver,
-    { pciaddr = pciaddr1, vmdq = false, macaddr = nil, vlan = nil})
-  config.app(c, "pci2", require(device_info2.driver).driver,
+  { pciaddr = pciaddr1, vmdq = false, macaddr = nil, vlan = nil})
+
+  if (pciaddr2) then
+    config.app(c, "pci2", require(device_info2.driver).driver,
     { pciaddr = pciaddr2, vmdq = false, macaddr = nil, vlan = nil})
+    c_config.app(c, "capture2", pcap.PcapReader, pcap2)
+    c_config.app(c, "repeater2", basic_apps.Repeater)
+    c_config.app(c, "sink2", basic_apps.Sink)
+    c_config.app(c, "pci2_to_pci1", basic_apps.Statistics)
+    c_config.app(c, "pci1_to_pci2", basic_apps.Statistics)
+  else
+    c_config.app(c, "rx", basic_apps.Statistics)
+  end
 
   c_config.app(c, "capture1", pcap.PcapReader, pcap1)
-  c_config.app(c, "capture2", pcap.PcapReader, pcap2)
   c_config.app(c, "repeater1", basic_apps.Repeater)
-  c_config.app(c, "repeater2", basic_apps.Repeater)
-  c_config.app(c, "pci1_to_pci2", basic_apps.Statistics)
-  c_config.app(c, "pci2_to_pci1", basic_apps.Statistics)
   c_config.app(c, "sink1", basic_apps.Sink)
-  c_config.app(c, "sink2", basic_apps.Sink)
 
   c_config.link(c, "capture1.output -> repeater1.input")
   c_config.link(c, "repeater1.output -> pci1.rx")
-  c_config.link(c, "pci1.tx -> pci1_to_pci2.input")
-  c_config.link(c, "pci1_to_pci2.output -> sink2.input")
-
-  c_config.link(c, "capture2.output -> repeater2.input")
-  c_config.link(c, "repeater2.output -> pci2.rx")
-  c_config.link(c, "pci2.tx -> pci2_to_pci1.input")
-  c_config.link(c, "pci2_to_pci1.output -> sink1.input")
+  if (pciaddr2) then
+    c_config.link(c, "pci1.tx -> pci1_to_pci2.input")
+    c_config.link(c, "pci1_to_pci2.output -> sink2.input")
+    c_config.link(c, "capture2.output -> repeater2.input")
+    c_config.link(c, "repeater2.output -> pci2.rx")
+    c_config.link(c, "pci2.tx -> pci2_to_pci1.input")
+    c_config.link(c, "pci2_to_pci1.output -> sink1.input")
+  else
+    c_config.link(c, "pci1.tx -> rx.input")
+    c_config.link(c, "rx.output -> sink1.input")
+  end
 
   app.configure(c)
 
