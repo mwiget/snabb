@@ -12,7 +12,6 @@ module(..., package.seeall)
 
 local ffi = require("ffi")
 local C = ffi.C
-local S = require('syscall')
 local binary_search = require('apps.lwaftr.binary_search')
 
 local UINT32_MAX = 0xFFFFFFFF
@@ -61,14 +60,12 @@ local function make_equal_fn(type)
    end
 end
 
-function RangeMapBuilder.new(value_type, mtime_sec, mtime_nsec)
+function RangeMapBuilder.new(value_type)
    local builder = {}
    builder.value_type = value_type
    builder.entry_type = make_entry_type(builder.value_type)
    builder.type = make_entries_type(builder.entry_type)
    builder.equal_fn = make_equal_fn(builder.value_type)
-   builder.mtime_sec = mtime_sec or 0
-   builder.mtime_nsec = mtime_nsec or 0
    builder.entries = {}
    builder = setmetatable(builder, { __index = RangeMapBuilder })
    return builder
@@ -86,7 +83,8 @@ function RangeMapBuilder:add(key, value)
    self:add_range(key, key, value)
 end
 
-function RangeMapBuilder:build()
+function RangeMapBuilder:build(default_value)
+   assert(default_value)
    table.sort(self.entries, function(a,b) return a.max.key < b.max.key end)
 
    -- The optimized binary search routines in binary_search.dasl want to
@@ -95,33 +93,29 @@ function RangeMapBuilder:build()
    -- contiguous entries with the highest K having a value V, starting
    -- with UINT32_MAX and working our way down.
    local ranges = {}
-   if #self.entries == 0 then error('empty range map') end
-   do
-      local last_entry = ffi.new(self.entry_type)
-      last_entry.key = UINT32_MAX
-      last_entry.value = self.entries[#self.entries].max.value
-      table.insert(ranges, last_entry)
+   if self.entries[#self.entries].max.key < UINT32_MAX then
+      table.insert(self.entries,
+                   { min=self.entry_type(UINT32_MAX, default_value),
+                     max=self.entry_type(UINT32_MAX, default_value) })
    end
+
+   table.insert(ranges, self.entries[#self.entries].max)
    local range_end = self.entries[#self.entries].min
    for i=#self.entries-1,1,-1 do
       local entry = self.entries[i]
-      -- FIXME: We are using range maps for the address maps, but
-      -- currently are specifying these parameters in the binding table
-      -- where naturally one IPv4 address appears multiple times.  When
-      -- we switch to a separate address map, we can assert that ranges
-      -- are disjoint.  Until then, just assert that if ranges overlap
-      -- that they have the same value.
-      -- if entry.max.key >= range_end.key then
-      --    error("Multiple range map entries for key: "..entry.max.key)
-      -- end
-      if not self.equal_fn(entry.max.value, range_end.value) then
-         -- Remove this when the above test is enabled.
-         if entry.max.key >= range_end.key then
-            error("Key maps to multiple values: "..entry.max.key)
-         end
-         table.insert(ranges, entry.max)
-         range_end = entry.min
+      if entry.max.key >= range_end.key then
+         error("Multiple range map entries for key: "..entry.max.key)
+      elseif entry.max.key + 1 ~= range_end.key then
+         table.insert(ranges, self.entry_type(range_end.key - 1, default_value))
+         range_end = self.entry_type(entry.max.key + 1, default_value)
       end
+      if not self.equal_fn(entry.max.value, range_end.value) then
+         table.insert(ranges, entry.max)
+      end
+      range_end = entry.min
+   end
+   if range_end.key > 0 then
+      table.insert(ranges, self.entry_type(range_end.key - 1, default_value))
    end
 
    local range_count = #ranges
@@ -135,9 +129,7 @@ function RangeMapBuilder:build()
       entry_type = self.entry_type,
       type = self.type,
       entries = packed_entries,
-      size = range_count,
-      mtime_sec = self.mtime_sec,
-      mtime_nsec = self.mtime_nsec
+      size = range_count
    }
    map.binary_search = binary_search.gen(map.size, map.entry_type)
    map = setmetatable(map, { __index = RangeMap })
@@ -150,109 +142,29 @@ end
 
 local range_map_header_t = ffi.typeof[[
 struct {
-   uint8_t magic[8];
    uint32_t size;
    uint32_t entry_size;
-   uint64_t mtime_sec;
-   uint32_t mtime_nsec;
 }
 ]]
 
-local function round_up(x, y) return y*math.ceil(x/y) end
-
-function RangeMap:save(filename)
-   local fd, err = S.open(filename, "creat, wronly, trunc", "rusr, wusr, rgrp, roth")
-   if not fd then
-      error("error saving range map, while creating "..filename..": "..tostring(err))
-   end
-   local function write(ptr, size)
-      ptr = ffi.cast("uint8_t*", ptr)
-      local to_write = size
-      while to_write > 0 do
-         local written, err = S.write(fd, ptr, to_write)
-         if not written then return size - to_write, err end
-         ptr = ptr + written
-         to_write = to_write - written
-      end
-      return size, nil
-   end
+function RangeMap:save(stream)
    local entry_size = ffi.sizeof(self.entry_type)
-   local header = range_map_header_t("rangemap", self.size, entry_size,
-                                     self.mtime_sec, self.mtime_nsec)
-   local header_size = ffi.sizeof(range_map_header_t)
-   local written, err = write(header, header_size)
-   if written then
-      local padding = header_size - round_up(header_size, entry_size)
-      written, err = write(string.rep(' ', padding), padding)
-   end
-   if written then
-      local size = ffi.sizeof(self.type, self.size)
-      written, err = write(self.entries, size)
-   end
-   fd:close()
-   if err then error("error writing "..filename..": "..tostring(err)) end
+   stream:write_ptr(range_map_header_t(self.size, entry_size))
+   stream:write_array(self.entries, self.entry_type, self.size)
 end
 
-function RangeMap.has_magic(filename)
-   local fd, err = S.open(filename, "rdonly")
-   if not fd then return false end
-   local buf = ffi.new('uint8_t[9]')
-   fd:read(buf, 8)
-   local magic = ffi.string(buf)
-   -- This function introduces a TOCTTOU situation, but that isn't
-   -- terrible; we call this function just to know if the file exists
-   -- and might be a compiled file.  We re-do these checks later in
-   -- RangeMap.load().
-   fd:close()
-   return magic == 'rangemap'
-end
-
-function RangeMap.load(filename, value_type)
+function load(stream, value_type)
    local map = {}
    map.value_type = value_type
    map.entry_type = make_entry_type(map.value_type)
    map.type = make_entries_type(map.entry_type)
 
-   local fd, err = S.open(filename, "rdonly")
-   if not fd then
-      error("error opening saved range map ("..filename.."): "..tostring(err))
-   end
-   local header_size = ffi.sizeof(range_map_header_t)
-   local byte_size = S.fstat(fd).size
-   if byte_size < header_size then
-      fd:close()
-      error("corrupted saved range map ("..filename.."): too short")
-   end
-   local mem, err = S.mmap(nil, byte_size, 'read, write', 'private', fd, 0)
-   fd:close()
-   if not mem then error("mmap failed: " .. tostring(err)) end
-   local header = ffi.cast(ffi.typeof('$*', range_map_header_t), mem)
-   local magic = ffi.string(header.magic, 8)
-   if magic ~= "rangemap" then
-      error("corrupted saved range map ("..filename.."): bad magic: "..magic)
-   end
-   local size = header.size
-   local entry_size = header.entry_size
-   if entry_size ~= ffi.sizeof(map.entry_type) then
-      error("corrupted saved range map ("..filename.."): bad entry size: "..entry_size)
-   end
-   local offset = round_up(ffi.sizeof(range_map_header_t), entry_size)
-   if byte_size ~= offset + entry_size*size then
-      error("corrupted saved range map ("..filename.."): bad size: "..byte_size)
-   end
-
-   -- OK!
-   map.entries = ffi.cast(ffi.typeof('$*', map.entry_type),
-                          ffi.cast('uint8_t*', mem) + offset)
-   map.size = size
+   local header = stream:read_ptr(range_map_header_t)
+   assert(header.entry_size == ffi.sizeof(map.entry_type))
+   map.size = header.size
+   map.entries = stream:read_array(map.entry_type, map.size)
    map.binary_search = binary_search.gen(map.size, map.entry_type)
-   map.mtime_sec = header.mtime_sec
-   map.mtime_nsec = header.mtime_nsec
-   map = setmetatable(map, { __index = RangeMap })
-
-   ffi.gc(map.entries, function () S.munmap(mem, size) end)
-
-   return map
+   return setmetatable(map, { __index = RangeMap })
 end
 
 function selftest()
@@ -266,35 +178,41 @@ function selftest()
    builder:add(301, 50)
    builder:add(302, 60)
    builder:add(350, 70)
+   builder:add(351, 70)
    builder:add(370, 70)
    builder:add(400, 70)
    builder:add(401, 80)
    builder:add(UINT32_MAX-1, 99)
    builder:add(UINT32_MAX, 100)
-   local map = builder:build()
+   local map = builder:build(0)
 
-   assert(map.size == 12)
+   assert(map.size == 21)
    assert(map:lookup(0).value == 1)
    assert(map:lookup(1).value == 2)
-   assert(map:lookup(2).value == 10)
-   assert(map:lookup(99).value == 10)
+   assert(map:lookup(2).value == 0)
+   assert(map:lookup(99).value == 0)
    assert(map:lookup(100).value == 10)
    assert(map:lookup(101).value == 20)
-   assert(map:lookup(102).value == 30)
-   assert(map:lookup(199).value == 30)
+   assert(map:lookup(102).value == 0)
+   assert(map:lookup(199).value == 0)
    assert(map:lookup(200).value == 30)
-   assert(map:lookup(201).value == 40)
+   assert(map:lookup(201).value == 0)
    assert(map:lookup(300).value == 40)
    assert(map:lookup(301).value == 50)
    assert(map:lookup(302).value == 60)
-   assert(map:lookup(303).value == 70)
-   assert(map:lookup(349).value == 70)
+   assert(map:lookup(303).value == 0)
+   assert(map:lookup(349).value == 0)
    assert(map:lookup(350).value == 70)
-   assert(map:lookup(399).value == 70)
+   assert(map:lookup(351).value == 70)
+   assert(map:lookup(352).value == 0)
+   assert(map:lookup(369).value == 0)
+   assert(map:lookup(370).value == 70)
+   assert(map:lookup(371).value == 0)
+   assert(map:lookup(399).value == 0)
    assert(map:lookup(400).value == 70)
    assert(map:lookup(401).value == 80)
-   assert(map:lookup(402).value == 99)
-   assert(map:lookup(UINT32_MAX-2).value == 99)
+   assert(map:lookup(402).value == 0)
+   assert(map:lookup(UINT32_MAX-2).value == 0)
    assert(map:lookup(UINT32_MAX-1).value == 99)
    assert(map:lookup(UINT32_MAX).value == 100)
 
