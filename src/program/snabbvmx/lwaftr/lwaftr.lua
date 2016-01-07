@@ -156,9 +156,6 @@ function run(args)
 
    if conf.lwaftr then
      local lwconf = lwaftr_conf.load_lwaftr_config(conf.lwaftr)
-     if not file_exists(lwconf.address_map) then
-       fatal(("Couldn't locate address_map file at %s"):format(lwconf.address_map))
-     end
      if not file_exists(lwconf.binding_table) then
        fatal(("Couldn't locate binding_table file at %s"):format(lwconf.binding_table))
      end
