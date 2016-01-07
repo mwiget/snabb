@@ -23,13 +23,13 @@ function nh_fwd:new(arg)
   local ipv4_address = conf.ipv4_address
   local next_hop_mac = conf.next_hop_mac and ethernet:pton(conf.next_hop_mac)
   local service_mac = conf.service_mac and ethernet:pton(conf.service_mac)
-  local next_hop_cache = conf.next_hop_cache
   -- default cache refresh interval set to 30 seconds
-  local cache_refresh_interval = conf.cache_refresh_interval or 30
+  local cache_refresh_interval = conf.cache_refresh_interval or 0
   local description = conf.description or "nh_fwd"
   if next_hop_mac then
     print("next_hop_mac " .. ethernet:ntop(next_hop_mac) .. " on " .. description)
   end
+  print(string.format("cache_refresh_interval set to %d seconds",cache_refresh_interval))
 
   local o = {
     mac_address = mac_address,
@@ -37,7 +37,6 @@ function nh_fwd:new(arg)
     ipv4_address = ipv4_address,
     ipv6_address = ipv6_address,
     description = description,
-    next_hop_cache = next_hop_cache,
     service_mac = service_mac,
     cache_refresh_time = tonumber(app.now()),
     cache_refresh_interval = cache_refresh_interval
@@ -105,7 +104,7 @@ function nh_fwd:push ()
         eth_header:dst(self.mac_address)
         output = self.output.vmx
       else
-      -- set nh mac and send the packet out the wire 
+        -- set nh mac and send the packet out the wire 
         eth_header:dst(self.next_hop_mac)
       end
     else
@@ -135,7 +134,7 @@ function nh_fwd:push ()
         output = self.output.lwaftr
       else
         -- learn nh mac
-        if self.next_hop_cache then
+        if self.cache_refresh_interval > 0 then
           local learn = nil
           if 0x86dd == ether_type then
             local ipv6_header = ipv6:new_from_mem(p.data + ETH_HDR_SIZE, IPV6_HDR_SIZE) 
