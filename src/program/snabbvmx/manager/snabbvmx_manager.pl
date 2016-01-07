@@ -27,9 +27,12 @@ sub process_new_config {
   my $snabbvmx_config_file;
   my $snabbvmx_lwaftr_file;
   my $snabbvmx_binding_file;
-  my $snabbvmx_address_file;
   my $closeme = 0;
+  my @br_addresses;
+  my $br_address;
+  my $br_address_idx=-1;
   my $addresses;
+  my @softwires;
   while(<IN>) {
     chomp;
     if ($_ =~ /(snabbvmx-lwaftr-\w+-\w+)/) {
@@ -39,15 +42,11 @@ sub process_new_config {
       $snabbvmx_config_file = "$1.cfg";
       $snabbvmx_lwaftr_file = "$1.conf";
       $snabbvmx_binding_file = "$1.binding";
-      $snabbvmx_address_file = "$1.address";
       print("new snabbvmx config file $snabbvmx_config_file\n");
       open CFG,">$snabbvmx_config_file.new" or die $@;
       open LWA,">$snabbvmx_lwaftr_file.new" or die $@;
       open BDG,">$snabbvmx_binding_file.new" or die $@;
-      print BDG "{\n";
-      open ADR,">$snabbvmx_address_file.new" or die $@;
       print CFG "return {\n  lwaftr = \"$snabbvmx_lwaftr_file\",\n";
-      print LWA "address_map = $snabbvmx_address_file,\n";
       print LWA "binding_table = $snabbvmx_binding_file,\n";
       print LWA "vlan_tagging = false,\n";
     } elsif ($_ =~ /apply-macro ipv6_interface/) {
@@ -82,8 +81,11 @@ sub process_new_config {
       print CFG "    cache_refresh_interval = $1,\n";
     } elsif ($_ =~ /vlan (\d+)/) {
       print CFG "    vlan = $1,\n";
-    } elsif (/apply-macro binding_table/) {
-      # 
+    } elsif (/apply-macro softwires_([\w:]+)/) {
+      $br_address_idx++;
+      $br_address=$1;
+      push @br_addresses,$br_address;
+      print "br_address $br_address_idx is $br_address\n";
     } elsif (/(policy\w+)\s+(\w+)/) {
       print LWA "$1 = " . uc($2) . ",\n";
     } elsif (/(icmp\w+)\s+(\w+)/) {
@@ -95,8 +97,13 @@ sub process_new_config {
     } elsif (/([\w:]+)+\s+(\d+.\d+.\d+.\d+),(\d+),(\d+),(\d+)/) {
       # binding entry ipv6 ipv4,psid,psid_len,shift
       my $shift=16 - $4 - $5;
-      print BDG " {'$1', '$2', {psid=$3, psid_len=$4, shift=$shift}},\n";
-      $addresses{"$2"} = "{psid_length=$4, shift=$shift}";
+      my $sw = "{ ipv4=$2, psid=$3, b4=$1, aftr=$br_address_idx }";
+      push @softwires,$sw;
+      if ($shift > 0) {
+        $addresses{"$2"} = "{psid_length=$4, shift=$shift}";
+      } else {
+        $addresses{"$2"} = "{psid_length=$4}";
+      }
     }
   }
 
@@ -104,6 +111,20 @@ sub process_new_config {
     print CFG "  },\n";
   }
   print CFG "}\n";
+
+  print BDG "psid_map {\n";
+  foreach my $key (sort keys %addresses) {
+    print BDG "  $key $addresses{$key}\n";
+  }
+
+  print BDG "}\nbr_addresses {\n";
+  foreach my $ipv6 (@br_addresses) {
+    print BDG "  $ipv6,\n"
+  }
+  print BDG "}\nsoftwires {\n";
+  foreach my $sw (@softwires) {
+    print BDG "  $sw\n";
+  }
   print BDG "}\n";
 
   close IN;
@@ -111,15 +132,10 @@ sub process_new_config {
   close LWA;
   close BDG;
 
-  foreach my $key (sort keys %addresses) {
-    print ADR "$key $addresses{$key}\n";
-  }
-  close ADR;
 
   # compare the generated files and kick snabbvmx accordingly!
   my $signal = 0;   # default is no change, no signal needed
-  if (&file_changed($snabbvmx_address_file) +
-    &file_changed($snabbvmx_binding_file) > 0) {
+  if (&file_changed($snabbvmx_binding_file) > 0) {
     print("Binding table changed. Signal snabbvmx ...\n");
     $signal=1; # HUP
   }
