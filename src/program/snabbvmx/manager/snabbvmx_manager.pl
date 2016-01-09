@@ -153,9 +153,9 @@ sub check_config {
   `/usr/bin/ssh -o StrictHostKeyChecking=no -i $identity snabbvmx\@$ip show conf groups > /tmp/config.new`;
   my $delta = `/usr/bin/diff /tmp/config.new /tmp/config.old 2>&1`;
   if ($delta eq "") {
-    print("nothing new here\n");
+    print("snabbvmx_manager: no config change related to snabbvmx found\n");
   } else {
-    print("something changed!\n");
+    print("snabbvmx_manager: updated config for snabbvmx!\n");
     unlink "/tmp/config.old";
     rename "/tmp/config.new","/tmp/config.old";
     &process_new_config("/tmp/config.old");
