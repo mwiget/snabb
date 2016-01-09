@@ -188,19 +188,6 @@ function run(args)
       csv:activate()
    end
    
-   local linkreportinterval = 10
-
-   if linkreportinterval > 0 then
-     local t = timer.new("linkreport", engine.report_links, linkreportinterval*1e9, 'repeating')
-     timer.activate(t)
-   end
-
-   local loadreportinterval = 1
-   if loadreportinterval > 0 then
-     local t = timer.new("loadreport", engine.report_load, loadreportinterval*1e9, 'repeating')
-     timer.activate(t)
-   end
-
    if opts.duration then
       engine.main({duration=opts.duration, report={showlinks=true}})
    else
