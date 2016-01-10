@@ -122,6 +122,8 @@ function run(args)
      if v1pci ~= "0000:00:00.0" then
        if string.find(v1pci,"tap") then
          config.app(c, "v6nic", tap, v1pci)
+         config.link(c, "v6nic.output -> nh_fwd1.wire")
+         config.link(c, "nh_fwd1.wire -> v6nic.input")
        else
          local device_info = pci.device_info(v1pci)
          if not device_info then 
@@ -129,9 +131,9 @@ function run(args)
          end
          config.app(c, "v6nic", require(device_info.driver).driver,
          {pciaddr = v1pci, vmdq = vmdq, vlan = vlan, macaddr = v1mac})
+         config.link(c, "v6nic.tx -> nh_fwd1.wire")
+         config.link(c, "nh_fwd1.wire -> v6nic.rx")
        end
-       config.link(c, "v6nic.tx -> nh_fwd1.wire")
-       config.link(c, "nh_fwd1.wire -> v6nic.rx")
      end
    end
 
