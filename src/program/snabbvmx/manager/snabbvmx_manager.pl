@@ -137,12 +137,12 @@ sub process_new_config {
   my $signal="";   # default is no change, no signal needed
   if (&file_changed($snabbvmx_binding_file) > 0) {
     print("Binding table changed. Signal snabbvmx ...\n");
-    $signal='HUP'; # HUP
+    $signal='HUP';
   }
   if (&file_changed($snabbvmx_config_file) +
     &file_changed($snabbvmx_lwaftr_file) > 0) {
     print("Configs have changed. Need to restart snabbvmx ...\n");
-    $signal='QUIT'; # QUIT
+    $signal='TERM';
   }
   if ($signal) {
     print("sending $signal to process snabb snabbvmx\n");
