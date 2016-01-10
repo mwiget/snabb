@@ -149,7 +149,7 @@ function run(args)
      end
      if v2pci ~= "0000:00:00.0" then
        if string.find(v2pci,"tap") then
-         config.app(c, "v6nic", tap, v2pci)
+         config.app(c, "v4nic", tap, v2pci)
        else
          local device_info = pci.device_info(v2pci)
          if not device_info then 
