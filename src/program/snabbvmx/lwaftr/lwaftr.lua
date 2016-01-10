@@ -6,6 +6,7 @@ local lwaftr_conf       = require("apps.lwaftr.conf")
 local pci = require("lib.hardware.pci")
 local VhostUser = require("apps.vhost.vhost_user").VhostUser
 local nh_fwd = require("apps.juniper.nh_fwd").nh_fwd
+local tap = require("apps.tap.tap").Tap
 local lwaftr = require("apps.lwaftr.lwaftr").LwAftr
 
 local function show_usage(exit_code)
@@ -119,12 +120,16 @@ function run(args)
        config.link(c, "nh_fwd1.vmx -> " ..VM .. ".rx")
      end
      if v1pci ~= "0000:00:00.0" then
-       local device_info = pci.device_info(v1pci)
-       if not device_info then 
-         fatal(("Couldn't find device information for PCI address '%s'"):format(v1pci))
+       if string.find(v1pci,"tap") then
+         config.app(c, "v6nic", tap, v1pci)
+       else
+         local device_info = pci.device_info(v1pci)
+         if not device_info then 
+           fatal(("Couldn't find device information for PCI address '%s'"):format(v1pci))
+         end
+         config.app(c, "v6nic", require(device_info.driver).driver,
+         {pciaddr = v1pci, vmdq = vmdq, vlan = vlan, macaddr = v1mac})
        end
-       config.app(c, "v6nic", require(device_info.driver).driver,
-       {pciaddr = v1pci, vmdq = vmdq, vlan = vlan, macaddr = v1mac})
        config.link(c, "v6nic.tx -> nh_fwd1.wire")
        config.link(c, "nh_fwd1.wire -> v6nic.rx")
      end
@@ -143,12 +148,16 @@ function run(args)
        config.link(c, "nh_fwd2.vmx -> " ..VM .. ".rx")
      end
      if v2pci ~= "0000:00:00.0" then
-       local device_info = pci.device_info(v2pci)
-       if not device_info then 
-         fatal(("Couldn't find device information for PCI address '%s'"):format(v2pci))
+       if string.find(v2pci,"tap") then
+         config.app(c, "v6nic", tap, v2pci)
+       else
+         local device_info = pci.device_info(v2pci)
+         if not device_info then 
+           fatal(("Couldn't find device information for PCI address '%s'"):format(v2pci))
+         end
+         config.app(c, "v4nic", require(device_info.driver).driver,
+         {pciaddr = v2pci, vmdq = vmdq, vlan = vlan, macaddr = v2mac})
        end
-       config.app(c, "v4nic", require(device_info.driver).driver,
-       {pciaddr = v2pci, vmdq = vmdq, vlan = vlan, macaddr = v2mac})
        config.link(c, "v4nic.tx -> nh_fwd2.wire")
        config.link(c, "nh_fwd2.wire -> v4nic.rx")
      end
