@@ -65,19 +65,24 @@ function nh_fwd:push ()
       local eth_header = ethernet:new_from_mem(p.data, ETH_HDR_SIZE)
       local output = self.output.vmx
       local ether_type = eth_header:type()
-      if 0x0800 == ether_type and p.length > ETH_HDR_SIZE + IPV4_HDR_SIZE then
-        -- IPv4 packet from wire
-        local ipv4_header = ipv4:new_from_mem(p.data + ETH_HDR_SIZE, IPV4_HDR_SIZE) 
-        output = self.output.lwaftr
-        if self.ipv4_address and ipv4_header:dst_eq(self.ipv4_address) then
-          -- local IPv4 destination to vMX, else to lwaftr
-          output = self.output.vmx
-        end
-      elseif 0x86dd == ether_type and p.length > ETH_HDR_SIZE + IPV6_HDR_SIZE and self.ipv6_address then
-        -- IPv6 packet from wire
-        local ipv6_header = ipv6:new_from_mem(p.data + ETH_HDR_SIZE, IPV6_HDR_SIZE) 
-        if 0x04 == ipv6_header:next_header() then
+      local dstmac = eth_header:dst()
+      if eth_header:is_mcast(mac) then
+        output = self.output.vmx
+      elseif eth_header:dst_eq(self.mac_address) then
+        if 0x0800 == ether_type and p.length > ETH_HDR_SIZE + IPV4_HDR_SIZE then
+          -- IPv4 packet from wire
+          local ipv4_header = ipv4:new_from_mem(p.data + ETH_HDR_SIZE, IPV4_HDR_SIZE) 
           output = self.output.lwaftr
+          if self.ipv4_address and ipv4_header:dst_eq(self.ipv4_address) then
+            -- local IPv4 destination to vMX, else to lwaftr
+            output = self.output.vmx
+          end
+        elseif 0x86dd == ether_type and p.length > ETH_HDR_SIZE + IPV6_HDR_SIZE and self.ipv6_address then
+          -- IPv6 packet from wire
+          local ipv6_header = ipv6:new_from_mem(p.data + ETH_HDR_SIZE, IPV6_HDR_SIZE) 
+          if 0x04 == ipv6_header:next_header() then
+            output = self.output.lwaftr
+          end
         end
       end
 
