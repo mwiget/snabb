@@ -134,7 +134,7 @@ sub process_new_config {
 
 
   # compare the generated files and kick snabbvmx accordingly!
-  my $signal = 0;   # default is no change, no signal needed
+  my $signal="";   # default is no change, no signal needed
   if (&file_changed($snabbvmx_binding_file) > 0) {
     print("Binding table changed. Signal snabbvmx ...\n");
     $signal='HUP'; # HUP
@@ -144,7 +144,8 @@ sub process_new_config {
     print("Configs have changed. Need to restart snabbvmx ...\n");
     $signal='QUIT'; # QUIT
   }
-  if ($signal > 0) {
+  if ($signal) {
+    print("sending $signal to process snabb snabbvmx\n");
     `pkill -$signal -f 'snabb snabbvmx'`;
   }
 }
