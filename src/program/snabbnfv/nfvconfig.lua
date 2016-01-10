@@ -6,6 +6,7 @@ local RateLimiter = require("apps.rate_limiter.rate_limiter").RateLimiter
 local nd_light = require("apps.ipv6.nd_light").nd_light
 local L2TPv3 = require("apps.keyed_ipv6_tunnel.tunnel").SimpleKeyedTunnel
 local pci = require("lib.hardware.pci")
+local tap = require("apps.tap.tap").Tap
 local ffi = require("ffi")
 local C = ffi.C
 local lib = require("core.lib")
@@ -18,11 +19,15 @@ end
 -- Compile app configuration from <file> for <pciaddr> and vhost_user
 -- <socket>. Returns configuration.
 function load (file, pciaddr, sockpath)
-   local device_info = pci.device_info(pciaddr)
-   if not device_info then
-      print(format("could not find device information for PCI address %s", pciaddr))
+  if not string.find(pciaddr,"tap") then
+    local device_info = pci.device_info(pciaddr)
+    if not device_info then
+      print(string.format("could not find device information for PCI address %s", pciaddr))
       main.exit(1)
-   end
+    end
+  else
+    print(string.format("tap interface given: %s", pciaddr))
+  end
 
    local ports = lib.load_conf(file)
    local c = config.new()
@@ -38,11 +43,15 @@ function load (file, pciaddr, sockpath)
          end
         vmdq = false
       end
-      config.app(c, NIC, require(device_info.driver).driver,
+      if string.find(pciaddr,"tap") then
+        config.app(c, NIC, tap, pciaddr)
+      else
+        config.app(c, NIC, require(device_info.driver).driver,
                  {pciaddr = pciaddr,
                   vmdq = vmdq,
                   macaddr = mac_address,
                   vlan = vlan})
+      end
       config.app(c, Virtio, VhostUser, {socket_path=sockpath:format(t.port_id)})
       local VM_rx, VM_tx = Virtio..".rx", Virtio..".tx"
       if t.tx_police_gbps then
@@ -99,8 +108,13 @@ function load (file, pciaddr, sockpath)
          config.link(c, RxLimit..".output -> "..VM_rx)
          VM_rx = RxLimit..".input"
       end
-      config.link(c, NIC..".tx -> "..VM_rx)
-      config.link(c, VM_tx.." -> "..NIC..".rx")
+      if string.find(pciaddr,"tap") then
+        config.link(c, NIC..".output -> "..VM_rx)
+        config.link(c, VM_tx.." -> "..NIC..".input")
+      else
+        config.link(c, NIC..".tx -> "..VM_rx)
+        config.link(c, VM_tx.." -> "..NIC..".rx")
+      end
    end
 
    -- Return configuration c.
