@@ -19,8 +19,8 @@ nh_fwd = {}
 function nh_fwd:new(arg)
   local conf = arg and config.parse_app_arg(arg) or {}
   local mac_address = ethernet:pton(conf.mac_address)
-  local ipv6_address = conf.ipv6_address
-  local ipv4_address = conf.ipv4_address
+  local ipv6_address = conf.ipv6_address and ipv6:pton(conf.ipv6_address)
+  local ipv4_address = conf.ipv4_address and ipv4:pton(conf.ipv4_address)
   local next_hop_mac = conf.next_hop_mac and ethernet:pton(conf.next_hop_mac)
   local service_mac = conf.service_mac and ethernet:pton(conf.service_mac)
   -- default cache refresh interval set to 30 seconds
@@ -63,19 +63,22 @@ function nh_fwd:push ()
     for n = 1,link.nreadable(input) do
       local p = link.receive(input)
       local eth_header = ethernet:new_from_mem(p.data, ETH_HDR_SIZE)
-      local output = self.output.vmx
+      local output = nil
       local ether_type = eth_header:type()
       local dstmac = eth_header:dst()
-      if eth_header:is_mcast(mac) then
+      if eth_header:is_mcast(dstmac) then
         output = self.output.vmx
+      --  print(string.format("%s: broadcast packet to vmx", self.description))
       elseif eth_header:dst_eq(self.mac_address) then
+        output = self.output.vmx
         if 0x0800 == ether_type and p.length > ETH_HDR_SIZE + IPV4_HDR_SIZE then
           -- IPv4 packet from wire
           local ipv4_header = ipv4:new_from_mem(p.data + ETH_HDR_SIZE, IPV4_HDR_SIZE) 
-          output = self.output.lwaftr
           if self.ipv4_address and ipv4_header:dst_eq(self.ipv4_address) then
             -- local IPv4 destination to vMX, else to lwaftr
             output = self.output.vmx
+          else
+            output = self.output.lwaftr
           end
         elseif 0x86dd == ether_type and p.length > ETH_HDR_SIZE + IPV6_HDR_SIZE and self.ipv6_address then
           -- IPv6 packet from wire
@@ -84,6 +87,7 @@ function nh_fwd:push ()
             output = self.output.lwaftr
           end
         end
+      else
       end
 
       if output and not link.full(output) then
