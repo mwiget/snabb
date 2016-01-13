@@ -209,7 +209,7 @@ function nh_fwd:push ()
           local learn = nil
           if 0x86dd == ether_type then
             local ipv6_header = ipv6:new_from_mem(p.data + ETH_HDR_SIZE, IPV6_HDR_SIZE) 
-            if ipv6_header:src_eq(ipv6:pton('fe80::')) and 0x04 == ipv6_header:next_header() then
+            if ipv6_header:src_eq(ipv6:pton('fe80::')) then
               learn = "ipv6"
             end
           end
