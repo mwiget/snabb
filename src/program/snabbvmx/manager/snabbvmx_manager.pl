@@ -95,7 +95,7 @@ sub process_new_config {
     } elsif (/hairpinning/) {
       print LWA "hairpinning = true,\n";
     } elsif (/([\w:]+)+\s+(\d+.\d+.\d+.\d+),(\d+),(\d+),(\d+)/) {
-      # binding entry ipv6 ipv4,psid,psid_len,shift
+      # binding entry ipv6 ipv4,psid,psid_len,offset
       my $shift=16 - $4 - $5;
       my $sw = "{ ipv4=$2, psid=$3, b4=$1, aftr=$br_address_idx }";
       push @softwires,$sw;
