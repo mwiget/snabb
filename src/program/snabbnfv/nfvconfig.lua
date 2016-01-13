@@ -19,8 +19,9 @@ end
 -- Compile app configuration from <file> for <pciaddr> and vhost_user
 -- <socket>. Returns configuration.
 function load (file, pciaddr, sockpath)
+  local device_info
   if not string.find(pciaddr,"tap") then
-    local device_info = pci.device_info(pciaddr)
+    device_info = pci.device_info(pciaddr)
     if not device_info then
       print(string.format("could not find device information for PCI address %s", pciaddr))
       main.exit(1)
