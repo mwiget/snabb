@@ -163,24 +163,29 @@ function nh_fwd:push ()
     local ether_type = eth_header:type()
     -- destination mac is assumed empty when it comes from lwaftr
     if self.next_hop_mac then
-      local current_time = tonumber(app.now())
-      if current_time > self.cache_refresh_time + self.cache_refresh_interval then
-        self.cache_refresh_time = current_time
-        send_cache_trigger(self.output.vmx, packet.clone(p), self.mac_address)
+      if self.cache_refresh_interval > 0 then
+        local current_time = tonumber(app.now())
+        if current_time > self.cache_refresh_time + self.cache_refresh_interval then
+          self.cache_refresh_time = current_time
+          send_cache_trigger(self.output.vmx, packet.clone(p), self.mac_address)
+        end
       end
       -- set nh mac and send the packet out the wire 
       eth_header:dst(self.next_hop_mac)
     else
-      -- need to resolve nh. Punch plus a cache trigger to vmx
-      send_cache_trigger(self.output.vmx, packet.clone(p), self.mac_address)
-      eth_header:dst(self.mac_address)
+      -- no next-hop. Punch it to the vmx 
       output = self.output.vmx
+      eth_header:dst(self.mac_address)
+      if self.cache_refresh_interval > 0 then
+        send_cache_trigger(self.output.vmx, packet.clone(p), self.mac_address)
+      end
     end
     -- set local source mac address
     eth_header:src(self.mac_address)
 
     if output and not link.full(output) then
       link.transmit(output, p)
+      
     else
       packet.free(p)
     end
@@ -194,10 +199,12 @@ function nh_fwd:push ()
       local eth_header = ethernet:new_from_mem(p.data, ETH_HDR_SIZE)
       local output = self.output.wire
       local ether_type = eth_header:type()
+
       if self.service_mac and eth_header:dst_eq(self.service_mac) then
         output = self.output.lwaftr
       else
-        -- learn nh mac
+        -- packet destined for wire, but first if we need to detect
+        -- next-hop resolution packets we created ourselves... 
         if self.cache_refresh_interval > 0 then
           local learn = nil
           if 0x86dd == ether_type then
@@ -224,7 +231,6 @@ function nh_fwd:push ()
             end
           end
         end
-
       end
 
       if output and not link.full(output) then
