@@ -101,6 +101,7 @@ function nh_fwd:push ()
   local service_mac = self.service_mac
   local mac_address = self.mac_address
   local cache_refresh_interval = self.cache_refresh_interval
+  local current_time = tonumber(app.now())
 
   -- from lwaftr
   for _=1,math.min(link.nreadable(input_lwaftr), link.nwritable(output_wire)) do
@@ -109,7 +110,6 @@ function nh_fwd:push ()
     local eth_hdr = cast(ethernet._header_ptr_type, pkt.data)
 
     if cache_refresh_interval > 0 and output_vmx then
-      local current_time = tonumber(app.now())
       if current_time > self.cache_refresh_time + cache_refresh_interval then
         self.cache_refresh_time = current_time
         -- only required for one packet per breathe for packets coming out of lwaftr
