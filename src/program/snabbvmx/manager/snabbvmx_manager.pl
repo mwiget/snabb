@@ -33,15 +33,24 @@ sub process_new_config {
   my $br_address_idx=-1;
   my $addresses;
   my @softwires;
+  my $mac1;
+  my $mac2;
+
   while(<IN>) {
     chomp;
-    if ($_ =~ /(snabbvmx-lwaftr-\w+-\w+)/) {
+    if ($_ =~ /snabbvmx-lwaftr-(\w+)-(\w+)/) {
       if ("" ne $snabbvmx_config_file) {
         # TODO close files correctly. We have more than one group to handle!!
       }
-      $snabbvmx_config_file = "$1.cfg";
-      $snabbvmx_lwaftr_file = "$1.conf";
-      $snabbvmx_binding_file = "$1.binding";
+      $mac1 = do{local(@ARGV,$/)="mac_$1";<>};
+      chomp($mac1);
+      $mac2 = do{local(@ARGV,$/)="mac_$2";<>};
+      chomp($mac2);
+      print $file_content,"\n";
+
+      $snabbvmx_config_file = "snabbvmx-lwaftr-$1-$2.cfg";
+      $snabbvmx_lwaftr_file = "snabbvmx-lwaftr-$1-$2.conf";
+      $snabbvmx_binding_file = "snabbvmx-lwaftr-$1-$2.binding";
       print("new snabbvmx config file $snabbvmx_config_file\n");
       open CFG,">$snabbvmx_config_file.new" or die $@;
       open LWA,">$snabbvmx_lwaftr_file.new" or die $@;
@@ -65,7 +74,7 @@ sub process_new_config {
       print CFG "    ipv6_address = \"$1\",\n";
       print CFG "    description = \"b4\",\n";
       print LWA "aftr_ipv6_ip = $1,\n";
-      print LWA "aftr_mac_inet_side = 12:12:12:12:12:12,\n";
+      print LWA "aftr_mac_inet_side = $mac2,\n";
       print LWA "inet_mac = 66:66:66:66:66:66,\n";
     } elsif ($_ =~ /service_mac ([\w.:-]+)/) {
       print CFG "    service_mac = \"$1\",\n";
@@ -73,7 +82,7 @@ sub process_new_config {
       print CFG "    ipv4_address = \"$1\",\n";
       print CFG "    description = \"aftr\",\n";
       print LWA "aftr_ipv4_ip = $1,\n";
-      print LWA "aftr_mac_b4_side = 22:22:22:22:22:22,\n";
+      print LWA "aftr_mac_b4_side = $mac1,\n";
       print LWA "b4_mac = 44:44:44:44:44:44,\n";
     } elsif ($_ =~ /next_hop_cache/) {
       print CFG "    next_hop_cache = true,\n";

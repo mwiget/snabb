@@ -7,30 +7,30 @@ local link = require("core.link")
 local ethernet = require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local ipv6 = require("lib.protocol.ipv6")
+local ipsum = require("lib.checksum").ipsum
+local lwutil = require("apps.lwaftr.lwutil")
 
 local ffi = require("ffi")
 local C = ffi.C
 local cast = ffi.cast
 
-local uint16_ptr_t = ffi.typeof("uint16_t*")
+local n_ether_hdr_size = 14
+local n_ipv4_hdr_size = 20
+local n_ethertype_ipv4 = C.htons(0x0800)
+local n_ethertype_ipv6 = C.htons(0x86DD)
+local n_ipencap = 4
+local n_cache_src_ipv4 = ipv4:pton("0.0.0.0")
+local n_cache_src_ipv6 = ipv6:pton("fe80::")
 
-function wr16(offset, val)
-  cast(uint16_ptr_t, offset)[0] = val
-end
+local receive, transmit = link.receive, link.transmit
+local wr16 = lwutil.wr16
+local htons = lwutil.htons
+
+local uint16_ptr_t = ffi.typeof("uint16_t*")
 
 --- # `nh_fwd` app: Finds next hop mac by sending packets to VM interface
 
 nh_fwd = {}
-
-local function hex_dump(cdata,len)
-  local buf = ffi.string(cdata,len)
-  for i=1,math.ceil(#buf/16) * 16 do
-    if (i-1) % 16 == 0 then io.write(string.format('%08X  ', i-1)) end
-    io.write( i > #buf and '   ' or string.format('%02X ', buf:byte(i)) )
-    if i %  8 == 0 then io.write(' ') end
-    if i % 16 == 0 then io.write( buf:sub(i-16+1, i):gsub('%c','.'), '\n' ) end
-  end
-end
 
 function send_cache_trigger(r, p, mac)
 
@@ -43,31 +43,22 @@ function send_cache_trigger(r, p, mac)
 -- thru the same interface. Not sure if its ok to use that address or if there
 -- is a better way.
 
-  local ETH_HDR_SIZE = 14
-  local IPV4_HDR_SIZE  = 20
-  local IPV6_HDR_SIZE  = 40
+  local eth_hdr = cast(ethernet._header_ptr_type, p.data)
+  local ethertype = eth_hdr.ether_type
+  local ipv4_hdr = cast(ipv4._header_ptr_type, p.data + n_ether_hdr_size)
+  local ipv6_hdr = cast(ipv6._header_ptr_type, p.data + n_ether_hdr_size)
 
-  local eth_header = ethernet:new_from_mem(p.data, ETH_HDR_SIZE)
-  local ether_type = eth_header:type()
-  if 0x0800 == ether_type and p.length > ETH_HDR_SIZE + IPV4_HDR_SIZE then
-    -- IPv4 packet
-    local ipv4_header = ipv4:new_from_mem(p.data + ETH_HDR_SIZE, IPV4_HDR_SIZE) 
-    ipv4_header:src(ipv4:pton('0.0.0.0'))
-    wr16(p.data + 24, 0)  -- clear checksum before calculation
-    ipv4_header:checksum()
-  elseif 0x86dd == ether_type and p.length > ETH_HDR_SIZE + IPV6_HDR_SIZE then
-    -- IPv6 packet
-    local ipv6_header = ipv6:new_from_mem(p.data + ETH_HDR_SIZE, IPV6_HDR_SIZE) 
-    ipv6_header:src(ipv6:pton('fe80::'))
+  if ethertype == n_ethertype_ipv4 then
+    ipv4_hdr.src_ip = n_cache_src_ipv4
+    -- clear checksum before calculation
+    ipv4_hdr.checksum =  0  
+    ipv4_hdr.checksum = htons(ipsum(p.data + n_ether_hdr_size, n_ipv4_hdr_size, 0))
+    transmit(r, p)
+  elseif ethertype == n_ethertype_ipv6 then
+    ffi.copy(ipv6_hdr.src_ip, n_cache_src_ipv6, 16)
+    transmit(r, p)
   else
-    -- dont know what to do. Drop it silently
-    r = nil 
-  end
-  eth_header:dst(mac)
-  if r and not link.full(r) then
-    link.transmit(r, p)
-  else
-    packet.free(p)
+    packet.free(r)
   end
 
 end
@@ -79,7 +70,6 @@ function nh_fwd:new(arg)
   local ipv4_address = conf.ipv4_address and ipv4:pton(conf.ipv4_address)
   local next_hop_mac = conf.next_hop_mac and ethernet:pton(conf.next_hop_mac)
   local service_mac = conf.service_mac and ethernet:pton(conf.service_mac)
-  -- default cache refresh interval set to 30 seconds
   local cache_refresh_interval = conf.cache_refresh_interval or 0
   local description = conf.description or "nh_fwd"
   if next_hop_mac then
@@ -101,143 +91,115 @@ function nh_fwd:new(arg)
 end
 
 function nh_fwd:push ()
-  -- We expect up to 3 bi-directional queues:
-  -- wire: physical interface, either IPv4 or IPv6
-  -- lwaftr:  actual service function app (jlwaftr)
-  -- vmx:   virtio_user interface of the VM for nh resolution and non-lw4o6 packets 
-  -- keep processing packets as long as at least one of the output queues has
-  -- capacity (even though that might be the wrong one). This way we won't starve
-  -- out an open communication path.
 
-  local ETH_HDR_SIZE = 14
-  local IPV4_HDR_SIZE  = 20
-  local IPV6_HDR_SIZE  = 40
+  local input_lwaftr, output_lwaftr = self.input.lwaftr, self.output.lwaftr
+  local input_wire, output_wire = self.input.wire, self.output.wire
+  local input_vmx, output_vmx = self.input.vmx, self.output.vmx
 
-  -- packets from wire
-  local input = self.input.wire
-  if input then
-    for n = 1,link.nreadable(input) do
-      local p = link.receive(input)
-      local eth_header = ethernet:new_from_mem(p.data, ETH_HDR_SIZE)
-      local output = nil
-      local ether_type = eth_header:type()
-      local dstmac = eth_header:dst()
-      if eth_header:is_mcast(dstmac) then
-        output = self.output.vmx
-      --  print(string.format("%s: broadcast packet to vmx", self.description))
-      elseif eth_header:dst_eq(self.mac_address) then
-        output = self.output.vmx
-        if 0x0800 == ether_type and p.length > ETH_HDR_SIZE + IPV4_HDR_SIZE then
-          -- IPv4 packet from wire
-          local ipv4_header = ipv4:new_from_mem(p.data + ETH_HDR_SIZE, IPV4_HDR_SIZE) 
-          if self.ipv4_address and ipv4_header:dst_eq(self.ipv4_address) then
-            -- local IPv4 destination to vMX, else to lwaftr
-            output = self.output.vmx
-          else
-            output = self.output.lwaftr
-          end
-        elseif 0x86dd == ether_type and p.length > ETH_HDR_SIZE + IPV6_HDR_SIZE and self.ipv6_address then
-          -- IPv6 packet from wire
-          local ipv6_header = ipv6:new_from_mem(p.data + ETH_HDR_SIZE, IPV6_HDR_SIZE) 
-          if 0x04 == ipv6_header:next_header() then
-            output = self.output.lwaftr
-          end
-        end
-      else
-      end
+  local description = self.description
+  local next_hop_mac = self.next_hop_mac
+  local service_mac = self.service_mac
+  local mac_address = self.mac_address
+  local cache_refresh_interval = self.cache_refresh_interval
 
-      if output and not link.full(output) then
-        link.transmit(output, p)
-      else
-        packet.free(p)
+  -- from lwaftr
+  for _=1,math.min(link.nreadable(input_lwaftr), link.nwritable(output_wire)) do
+
+    local pkt = receive(input_lwaftr)
+    local eth_hdr = cast(ethernet._header_ptr_type, pkt.data)
+
+    if cache_refresh_interval > 0 and output_vmx then
+      local current_time = tonumber(app.now())
+      if current_time > self.cache_refresh_time + cache_refresh_interval then
+        self.cache_refresh_time = current_time
+        -- only required for one packet per breathe for packets coming out of lwaftr
+        -- because next_hop_mac won't be learned until much later
+        cache_refresh_interval = 0
+        send_cache_trigger(output_vmx, packet.clone(pkt))
       end
     end
+
+    if next_hop_mac then
+      -- set nh mac and send the packet out the wire
+      eth_hdr.ether_dhost = next_hop_mac 
+      transmit(output_wire, pkt)
+    elseif output_vmx then
+      -- no nh mac. Punch it to the vMX
+      transmit(output_vmx, pkt)
+    else
+      packet.free(pkt)
+    end
+
   end
 
-  -- packets from lwaftr
-  local input = self.input.lwaftr
-  for n = 1,link.nreadable(input) do
-    local p = link.receive(input)
-    local eth_header = ethernet:new_from_mem(p.data, ETH_HDR_SIZE)
-    local output = self.output.wire
-    local ether_type = eth_header:type()
-    -- destination mac is assumed empty when it comes from lwaftr
-    if self.next_hop_mac then
-      if self.cache_refresh_interval > 0 then
-        local current_time = tonumber(app.now())
-        if current_time > self.cache_refresh_time + self.cache_refresh_interval then
-          self.cache_refresh_time = current_time
-          send_cache_trigger(self.output.vmx, packet.clone(p), self.mac_address)
-        end
-      end
-      -- set nh mac and send the packet out the wire 
-      eth_header:dst(self.next_hop_mac)
-    else
-      -- no next-hop. Punch it to the vmx 
-      output = self.output.vmx
-      eth_header:dst(self.mac_address)
-      if self.cache_refresh_interval > 0 then
-        send_cache_trigger(self.output.vmx, packet.clone(p), self.mac_address)
-      end
-    end
-    -- set local source mac address
-    eth_header:src(self.mac_address)
+  -- from wire
+  for _=1,math.min(link.nreadable(input_wire), link.nwritable(output_lwaftr)) do
 
-    if output and not link.full(output) then
-      link.transmit(output, p)
-      
-    else
-      packet.free(p)
+    local pkt = receive(input_wire)
+    local eth_hdr = cast(ethernet._header_ptr_type, pkt.data)
+    local ethertype = eth_hdr.ether_type
+    local ipv4_hdr = cast(ipv4._header_ptr_type, pkt.data + n_ether_hdr_size)
+    local ipv6_hdr = cast(ipv6._header_ptr_type, pkt.data + n_ether_hdr_size)
+
+    --[[
+    if ethertype == n_ethertype_ipv4 then
+      print(string.format("ipv4 %s", ipv4:ntop(ipv4_hdr.dst_ip)))
+    elseif ethertype == n_ethertype_ipv6 then
+      print(string.format("ipv6 %s", ipv6:ntop(ipv6_hdr.dst_ip)))
     end
+    --]]
+
+    if C.memcmp(eth_hdr.ether_dhost, mac_address, 6) == 0 then
+      if ethertype == n_ethertype_ipv4 and ipv4_hdr.dst_ip ~= self.ipv4_address then
+        transmit(output_lwaftr, pkt)
+      elseif ethertype == n_ethertype_ipv6 and ipv6_hdr.next_header == n_ipencap then
+        transmit(output_lwaftr, pkt)
+      elseif output_vmx then
+        transmit(output_vmx, pkt)
+      else
+        packet.free(pkt)
+      end
+    elseif output_vmx then
+      transmit(output_vmx, pkt)
+    else
+      packet.free(pkt)
+    end
+
   end
 
-  -- packets from vmx
-  if self.input.vmx then
-    local input = self.input.vmx
-    for n = 1,link.nreadable(input) do
-      local p = link.receive(input)
-      local eth_header = ethernet:new_from_mem(p.data, ETH_HDR_SIZE)
-      local output = self.output.wire
-      local ether_type = eth_header:type()
+  -- from vmx: most packets will go straight out the wire, so check
+  -- for room in the outbound wire queue, even though some packets may 
+  -- actually go to lwaftr (via service mac)
+  --
+  local cache_refresh_interval = self.cache_refresh_interval
+  if input_vmx then
+    for _=1,math.min(link.nreadable(input_vmx), link.nwritable(output_wire)) do
 
-      if self.service_mac and eth_header:dst_eq(self.service_mac) then
-        output = self.output.lwaftr
-      else
-        -- packet destined for wire, but first if we need to detect
-        -- next-hop resolution packets we created ourselves... 
-        if self.cache_refresh_interval > 0 then
-          local learn = nil
-          if 0x86dd == ether_type then
-            local ipv6_header = ipv6:new_from_mem(p.data + ETH_HDR_SIZE, IPV6_HDR_SIZE) 
-            if ipv6_header:src_eq(ipv6:pton('fe80::')) then
-              learn = "ipv6"
-            end
-          end
-          if 0x0800 == ether_type then
-            local ipv4_header = ipv4:new_from_mem(p.data + ETH_HDR_SIZE, IPV4_HDR_SIZE) 
-            if ipv4_header:src_eq(ipv4:pton('0.0.0.0')) then
-              learn = "ipv4"
-            end
-          end
-          if learn then
-            local mac = eth_header:dst()
-            if not eth_header:is_mcast(mac) then
-              self.next_hop_mac = ethernet:pton("00:00:00:00:00:00")
-              ffi.copy(self.next_hop_mac, eth_header:dst(), 6)
-              print("learning " .. learn .. " nh mac address " .. ethernet:ntop(self.next_hop_mac))
-              -- make sure we free this packe without sending it, this was
-              -- a self created packet to learn the nh only
-              output = nil 
-            end
-          end
+      local pkt = receive(input_vmx)
+      local eth_hdr = cast(ethernet._header_ptr_type, pkt.data)
+      local ethertype = eth_hdr.ether_type
+      local ipv4_hdr = cast(ipv4._header_ptr_type, pkt.data + n_ether_hdr_size)
+      local ipv6_hdr = cast(ipv6._header_ptr_type, pkt.data + n_ether_hdr_size)
+
+      if service_mac and C.memcmp(eth_hdr.ether_dhost, service_mac, 6) == 0 then
+        transmit(output_lwaftr, pkt)
+      elseif cache_refresh_interval > 0 then
+        if ethertype == n_ethertype_ipv4 and C.memcmp(ipv4_hdr.src_ip, n_cache_src_ipv4,4) == 0 then    
+          -- our magic cache next-hop resolution packet. Never send this out
+          self.next_hop_mac = eth_hdr.ether_dhost
+          print(description .. " learning ipv4 nh mac address " .. ethernet:ntop(self.next_hop_mac))
+          packet.free(pkt)
+        elseif ethertype == n_ethertype_ipv6 and C.memcmp(ipv6_hdr.src_ip, n_cache_src_ipv6,16) == 0 then
+          self.next_hop_mac = eth_hdr.ether_dhost
+          print(description .. " learning ipv6 nh mac address " .. ethernet:ntop(self.next_hop_mac))
+          packet.free(pkt)
+        else
+          transmit(output_wire, pkt)
         end
+      else
+        transmit(output_wire, pkt)
       end
 
-      if output and not link.full(output) then
-        link.transmit(output, p)
-      else
-        packet.free(p)
-      end
     end
   end
 
