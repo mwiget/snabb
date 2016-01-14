@@ -1,7 +1,6 @@
 module(...,package.seeall)
 
 local app = require("core.app")
-local freelist = require("core.freelist")
 local packet = require("core.packet")
 local link = require("core.link")
 local ethernet = require("lib.protocol.ethernet")
@@ -23,10 +22,7 @@ local n_cache_src_ipv4 = ipv4:pton("0.0.0.0")
 local n_cache_src_ipv6 = ipv6:pton("fe80::")
 
 local receive, transmit = link.receive, link.transmit
-local wr16 = lwutil.wr16
 local htons = lwutil.htons
-
-local uint16_ptr_t = ffi.typeof("uint16_t*")
 
 --- # `nh_fwd` app: Finds next hop mac by sending packets to VM interface
 
@@ -102,6 +98,7 @@ function nh_fwd:push ()
   local mac_address = self.mac_address
   local cache_refresh_interval = self.cache_refresh_interval
   local current_time = tonumber(app.now())
+  local cache_refresh_time = self.cache_refresh_time
 
   -- from lwaftr
   for _=1,math.min(link.nreadable(input_lwaftr), link.nwritable(output_wire)) do
@@ -110,7 +107,7 @@ function nh_fwd:push ()
     local eth_hdr = cast(ethernet._header_ptr_type, pkt.data)
 
     if cache_refresh_interval > 0 and output_vmx then
-      if current_time > self.cache_refresh_time + cache_refresh_interval then
+      if current_time > cache_refresh_time + cache_refresh_interval then
         self.cache_refresh_time = current_time
         -- only required for one packet per breathe for packets coming out of lwaftr
         -- because next_hop_mac won't be learned until much later
@@ -140,6 +137,7 @@ function nh_fwd:push ()
     local ethertype = eth_hdr.ether_type
     local ipv4_hdr = cast(ipv4._header_ptr_type, pkt.data + n_ether_hdr_size)
     local ipv6_hdr = cast(ipv6._header_ptr_type, pkt.data + n_ether_hdr_size)
+    local ipv4_address = self.ipv4_address
 
     --[[
     if ethertype == n_ethertype_ipv4 then
@@ -150,7 +148,7 @@ function nh_fwd:push ()
     --]]
 
     if C.memcmp(eth_hdr.ether_dhost, mac_address, 6) == 0 then
-      if ethertype == n_ethertype_ipv4 and ipv4_hdr.dst_ip ~= self.ipv4_address then
+      if ethertype == n_ethertype_ipv4 and ipv4_hdr.dst_ip ~= ipv4_address then
         transmit(output_lwaftr, pkt)
       elseif ethertype == n_ethertype_ipv6 and ipv6_hdr.next_header == n_ipencap then
         transmit(output_lwaftr, pkt)
@@ -187,11 +185,11 @@ function nh_fwd:push ()
         if ethertype == n_ethertype_ipv4 and C.memcmp(ipv4_hdr.src_ip, n_cache_src_ipv4,4) == 0 then    
           -- our magic cache next-hop resolution packet. Never send this out
           self.next_hop_mac = eth_hdr.ether_dhost
-          print(description .. " learning ipv4 nh mac address " .. ethernet:ntop(self.next_hop_mac))
+--          print(description .. " learning ipv4 nh mac address " .. ethernet:ntop(self.next_hop_mac))
           packet.free(pkt)
         elseif ethertype == n_ethertype_ipv6 and C.memcmp(ipv6_hdr.src_ip, n_cache_src_ipv6,16) == 0 then
           self.next_hop_mac = eth_hdr.ether_dhost
-          print(description .. " learning ipv6 nh mac address " .. ethernet:ntop(self.next_hop_mac))
+--          print(description .. " learning ipv6 nh mac address " .. ethernet:ntop(self.next_hop_mac))
           packet.free(pkt)
         else
           transmit(output_wire, pkt)
