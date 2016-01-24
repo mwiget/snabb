@@ -1,0 +1,24 @@
+Usage:
+  top [OPTIONS] [<pid>]
+
+  -h, --help
+                             Print usage information.
+
+Display realtime performance statistics for a running lwaftr Snabb Switch
+instance with <pid>. If <pid> is not supplied and there is only one Snabb
+Switch instance, top will connect to that instance.
+
+The following metrics will be displayed per link:
+
+  rx
+                             Millions of packets received per second.
+  tx
+                             Millions of packets transmitted per second.
+  rxGb
+                             Gigabytes of packet data received per
+                             second.
+  txGb
+                             Gigabytes of packet data transmitted per
+                             second.
+  txdrop
+                             Millions of packets dropped per second.

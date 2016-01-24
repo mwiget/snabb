@@ -8,6 +8,7 @@ local lwconf = require("apps.lwaftr.conf")
 local lwdebug = require("apps.lwaftr.lwdebug")
 local lwheader = require("apps.lwaftr.lwheader")
 local lwutil = require("apps.lwaftr.lwutil")
+local counter = require("core.counter")
 
 local S = require("syscall")
 local timer = require("core.timer")
@@ -97,6 +98,21 @@ local function on_signal(sig, f)
 end
 
 LwAftr = {}
+
+-- Counters for statistics.
+v4sentPacket    = counter.open("lwaftr_v4/sentPacket")
+v4sentByte      = counter.open("lwaftr_v4/sentByte")
+v4rcvdPacket    = counter.open("lwaftr_v4/rcvdPacket")
+v4rcvdByte      = counter.open("lwaftr_v4/rcvdByte")
+v4droppedPacket = counter.open("lwaftr_v4/droppedPacket")
+v4droppedByte   = counter.open("lwaftr_v4/droppedByte")
+
+v6sentPacket    = counter.open("lwaftr_v6/sentPacket")
+v6sentByte      = counter.open("lwaftr_v6/sentByte")
+v6rcvdPacket    = counter.open("lwaftr_v6/rcvdPacket")
+v6rcvdByte      = counter.open("lwaftr_v6/rcvdByte")
+v6droppedPacket = counter.open("lwaftr_v6/droppedPacket")
+v6droppedByte   = counter.open("lwaftr_v6/droppedByte")
 
 function LwAftr:new(conf)
    if type(conf) == 'string' then
@@ -296,6 +312,8 @@ local function ipv6_encapsulate(lwstate, pkt, next_hdr_type, ipv6_src, ipv6_dst,
 
    if encapsulating_packet_with_df_flag_would_exceed_mtu(lwstate, pkt) then
       local icmp_pkt = cannot_fragment_df_packet_error(lwstate, pkt)
+      counter.add(v4droppedPacket)
+      counter.add(v4droppedByte, pkt.length)
       packet.free(pkt)
       return transmit(lwstate.o4, icmp_pkt)
    end
@@ -318,6 +336,8 @@ local function ipv6_encapsulate(lwstate, pkt, next_hdr_type, ipv6_src, ipv6_dst,
       print("encapsulated packet:")
       lwdebug.print_pkt(pkt)
    end
+   counter.add(v6sentPacket)
+   counter.add(v6sentByte, pkt.length)
    return transmit(lwstate.o6, pkt)
 end
 
@@ -378,8 +398,12 @@ local function from_inet(lwstate, pkt)
    -- than other protocols.
    local proto_offset = lwstate.l2_size + o_ipv4_proto
    local proto = pkt.data[proto_offset]
+   counter.add(v4rcvdPacket)
+   counter.add(v4rcvdByte, pkt.length)
    if proto == proto_icmp then
       if lwstate.policy_icmpv4_incoming == lwconf.policies['DROP'] then
+         counter.add(v4droppedPacket)
+         counter.add(v4droppedByte, pkt.length)
          packet.free(pkt)
          return
       else
@@ -390,6 +414,8 @@ local function from_inet(lwstate, pkt)
    -- It's not incoming ICMP; back to regular processing
    local ipv6_dst, ipv6_src = binding_lookup_dst_ipv4_from_pkt(lwstate, pkt, lwstate.l2_size)
    if not ipv6_dst then
+      counter.add(v4droppedPacket)
+      counter.add(v4droppedByte, pkt.length)
       if debug then print("lookup failed") end
       if lwstate.policy_icmpv4_outgoing == lwconf.policies['DROP'] then
          packet.free(pkt)
@@ -567,12 +593,18 @@ local function from_b4(lwstate, pkt)
          packet.shiftleft(pkt, ipv6_fixed_header_size)
          write_eth_header(pkt.data, lwstate.aftr_mac_inet_side, lwstate.inet_mac,
                           n_ethertype_ipv4)
+         counter.add(v4sentPacket)
+         counter.add(v4sentByte, pkt.length)
          return transmit(lwstate.o4, pkt)
       end
    elseif lwstate.policy_icmpv6_outgoing == lwconf.policies['ALLOW'] then
       icmp_b4_lookup_failed(lwstate, pkt, ipv6_src_ip)
+      counter.add(v6droppedPacket)
+      counter.add(v6droppedByte, pkt.length)
       packet.free(pkt)
    else
+      counter.add(v6droppedPacket)
+      counter.add(v6droppedByte, pkt.length)
       packet.free(pkt)
       return
    end
