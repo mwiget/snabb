@@ -195,12 +195,11 @@ function nh_fwd:push ()
       --]]
 
       if C.memcmp(eth_hdr.ether_dhost, mac_address, 6) == 0 then
-        if ethertype == n_ethertype_ipv4 and not C.memcmp(ipv4_hdr.dst_ip, ipv4_address, 4) then
+        if ethertype == n_ethertype_ipv4 and C.memcmp(ipv4_hdr.dst_ip, ipv4_address, 4) ~= 0 then
           transmit(output_service, pkt)
         elseif ethertype == n_ethertype_ipv6 and ipv6_hdr.next_header == n_ipencap then
           transmit(output_service, pkt)
         elseif output_vmx then
-          print("send to vmx")
           transmit(output_vmx, pkt)
         else
           packet.free(pkt)
