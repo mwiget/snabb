@@ -107,7 +107,7 @@ local function config_interface(c, id, pciaddr, mac, nic_name, nh_fwd_name, inte
      if pciaddr ~= "0000:00:00.0" then
        if string.find(pciaddr,"tap") then
          config.app(c, nic_name, tap, pciaddr)
-         config.link(c, nic_name .. "output -> " .. nh_fwd_name .. ".wire")
+         config.link(c, nic_name .. ".output -> " .. nh_fwd_name .. ".wire")
          config.link(c, nh_fwd_name .. ".wire -> " .. nic_name .. ".input")
        else
          local device_info = pci.device_info(pciaddr)
