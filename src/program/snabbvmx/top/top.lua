@@ -73,7 +73,8 @@ function open_counters (tree)
    for _,lwaftrspec in pairs({"lwaftr_v6", "lwaftr_v4"}) do
       counters.lwaftr[lwaftrspec] = {}
       for _, name
-      in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket"}) do
+      in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket",
+     "reassemble_ok", "reassemble_invalid", "fragment_ok", "fragment_forbidden"}) do
          counters.lwaftr[lwaftrspec][name] =
            counter.open(tree .."/" .. lwaftrspec .. "/" .. name, 'readonly')
       end
@@ -87,7 +88,8 @@ function get_stats (counters)
    for lwaftrspec, lwaftr in pairs(counters.lwaftr) do
       new_stats.lwaftr[lwaftrspec] = {}
       for _, name
-      in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket"}) do
+      in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket",
+       "reassemble_ok", "reassemble_invalid", "fragment_ok", "fragment_forbidden"}) do
          new_stats.lwaftr[lwaftrspec][name] = counter.read(lwaftr[name])
       end
    end
@@ -113,12 +115,13 @@ function print_lwaftr_metrics (new_stats, last_stats, time_delta)
       end
    end
 
-   local metrics_row = {25, 20, 20}
+   local metrics_row = {30, 20, 20}
    for lwaftrspec, lwaftr in pairs(new_stats.lwaftr) do
      if last_stats.lwaftr[lwaftrspec] then
-        io.write(("\n%25s  %20s %20s\n"):format("", "Total", "per second"))
+        io.write(("\n%30s  %20s %20s\n"):format("", "Total", "per second"))
        for _, name
-         in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket"}) do
+         in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket",
+          "reassemble_ok", "reassemble_invalid", "fragment_ok", "fragment_forbidden"}) do
          local delta = tonumber(new_stats.lwaftr[lwaftrspec][name] - last_stats.lwaftr[lwaftrspec][name])
          print_row(metrics_row, {lwaftrspec .. " " .. name,
          int_s(new_stats.lwaftr[lwaftrspec][name]), int_s(delta)})
