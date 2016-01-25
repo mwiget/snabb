@@ -4,6 +4,7 @@ local ffi = require("ffi")
 local C = ffi.C
 local lib = require("core.lib")
 local shm = require("core.shm")
+local syscall = require("syscall")
 local counter = require("core.counter")
 local S = require("syscall")
 local usage = require("program.snabbvmx.top.README_inc")
@@ -22,6 +23,13 @@ function run (args)
    if #args > 1 then print(usage) main.exit(1) end
    local target_pid = args[1]
 
+   -- Unlink stale snabb resources.
+   for _, pid in ipairs(shm.children("//")) do
+     if not syscall.kill(tonumber(pid), 0) then
+       shm.unlink("//"..pid)
+     end
+   end
+      
    local instance_tree = "//"..(select_snabb_instance(target_pid))
    local counters = open_counters(instance_tree)
    local configs = 0
@@ -104,6 +112,20 @@ function print_lwaftr_metrics (new_stats, last_stats, time_delta)
                     float_s(drop / time_delta)})
       end
    end
+
+   local metrics_row = {25, 20, 20}
+   for lwaftrspec, lwaftr in pairs(new_stats.lwaftr) do
+     if last_stats.lwaftr[lwaftrspec] then
+        io.write(("\n%25s  %20s %20s\n"):format("", "Total", "per second"))
+       for _, name
+         in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket"}) do
+         local delta = tonumber(new_stats.lwaftr[lwaftrspec][name] - last_stats.lwaftr[lwaftrspec][name])
+         print_row(metrics_row, {lwaftrspec .. " " .. name,
+         int_s(new_stats.lwaftr[lwaftrspec][name]), int_s(delta)})
+
+       end
+     end
+   end
 end
 
 function pad_str (s, n)
@@ -116,6 +138,10 @@ function print_row (spec, args)
       io.write((" %s"):format(pad_str(s, spec[i])))
    end
    io.write("\n")
+end
+
+function int_s (n)
+   return ("%20d"):format(tonumber(n))
 end
 
 function float_s (n)

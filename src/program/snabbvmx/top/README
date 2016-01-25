@@ -4,21 +4,26 @@ Usage:
   -h, --help
                              Print usage information.
 
-Display realtime performance statistics for a running lwaftr Snabb Switch
+Display realtime lwaftr statistics for a running lwaftr Snabb Switch
 instance with <pid>. If <pid> is not supplied and there is only one Snabb
 Switch instance, top will connect to that instance.
 
-The following metrics will be displayed per link:
+Example output:
 
-  rx
-                             Millions of packets received per second.
-  tx
-                             Millions of packets transmitted per second.
-  rxGb
-                             Gigabytes of packet data received per
-                             second.
-  txGb
-                             Gigabytes of packet data transmitted per
-                             second.
-  txdrop
-                             Millions of packets dropped per second.
+ lwaftr (rx/tx/txdrop in Mpps)   rx      tx      rxGb    txGb    txdrop
+ lwaftr_v6                       0.00    3.16    0.00    3.59    0.00
+ lwaftr_v4                       3.16    0.00    2.58    0.00    0.00
+
+                                          Total           per second
+ lwaftr_v6 rcvdPacket                         0                    0
+ lwaftr_v6 sentPacket                1507819107              3161600
+ lwaftr_v6 rcvdByte                           0                    0
+ lwaftr_v6 sentByte                214110313194            448947200
+ lwaftr_v6 droppedPacket                      0                    0
+ 
+                                          Total           per second
+ lwaftr_v4 rcvdPacket                1507819107              3161600
+ lwaftr_v4 sentPacket                         0                    0
+ lwaftr_v4 rcvdByte                153797548914            322483200
+ lwaftr_v4 sentByte                           0                    0
+ lwaftr_v4 droppedPacket                      0                    0
