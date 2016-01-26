@@ -566,14 +566,25 @@ local function from_b4(lwstate, pkt)
    -- FIXME: deal with multiple IPv6 headers?
    local eth_and_ipv6 = lwstate.l2_size + ipv6_fixed_header_size
    local ipv4_src_ip_offset = eth_and_ipv6 + o_ipv4_src_addr
+   local ipv4_proto_offset = eth_and_ipv6 + o_ipv4_proto
    -- FIXME: as above + non-tcp/non-udp payloads
    local ipv4_src_port_offset = eth_and_ipv6 + get_ihl_from_offset(pkt, eth_and_ipv6)
    local ipv6_src_ip = pkt.data + ipv6_src_ip_offset
    local ipv6_dst_ip = pkt.data + ipv6_dst_ip_offset
    local ipv4_src_ip = rd32(pkt.data + ipv4_src_ip_offset)
-   local ipv4_src_port = ntohs(rd16(pkt.data + ipv4_src_port_offset))
+   local ipv4_proto = pkt.data[ipv4_proto_offset]
+   local ipv4_src_port_or_id 
+   
+   if ipv4_proto == proto_icmp then
+     -- TODO: replace 15 with something more meaningful to get to the id in the ICMP packet 
+     ipv4_src_port_or_id = ntohs(rd16(pkt.data + ipv4_proto_offset + 15))
+--     print(string.format("id is %d", ipv4_src_port_or_id))
+   else
+     ipv4_src_port_or_id = ntohs(rd16(pkt.data + ipv4_src_port_offset))
+   end
 
-   if in_binding_table(lwstate, ipv6_src_ip, ipv6_dst_ip, ipv4_src_ip, ipv4_src_port) then
+
+   if in_binding_table(lwstate, ipv6_src_ip, ipv6_dst_ip, ipv4_src_ip, ipv4_src_port_or_id) then
       -- Is it worth optimizing this to change src_eth, src_ipv6, ttl, checksum,
       -- rather than decapsulating + re-encapsulating? It would be faster, but more code.
       local offset = lwstate.l2_size + ipv6_fixed_header_size
