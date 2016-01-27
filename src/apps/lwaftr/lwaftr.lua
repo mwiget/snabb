@@ -551,6 +551,10 @@ end
 local function from_b4(lwstate, pkt)
    local proto_offset = lwstate.l2_size + o_ipv6_next_header
    local proto = pkt.data[proto_offset]
+
+   counter.add(v6rcvdPacket)
+   counter.add(v6rcvdByte, pkt.length)
+
    if proto == proto_icmpv6 then
       if lwstate.policy_icmpv6_incoming == lwconf.policies['DROP'] then
          packet.free(pkt)
