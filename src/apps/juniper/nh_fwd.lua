@@ -56,6 +56,7 @@ local n_ipv4_hdr_size = 20
 local n_ethertype_ipv4 = htons(0x0800)
 local n_ethertype_ipv6 = htons(0x86DD)
 local n_ipencap = 4
+local n_ipfragment = 44
 local n_cache_src_ipv4 = ipv4:pton("0.0.0.0")
 local n_cache_src_ipv6 = ipv6:pton("fe80::")
 
@@ -197,7 +198,8 @@ function nh_fwd:push ()
       if C.memcmp(eth_hdr.ether_dhost, mac_address, 6) == 0 then
         if ethertype == n_ethertype_ipv4 and C.memcmp(ipv4_hdr.dst_ip, ipv4_address, 4) ~= 0 then
           transmit(output_service, pkt)
-        elseif ethertype == n_ethertype_ipv6 and ipv6_hdr.next_header == n_ipencap then
+        elseif ethertype == n_ethertype_ipv6 and 
+          (ipv6_hdr.next_header == n_ipencap or ipv6_hdr.next_header == n_ipfragment) then
           transmit(output_service, pkt)
         elseif output_vmx then
           transmit(output_vmx, pkt)
