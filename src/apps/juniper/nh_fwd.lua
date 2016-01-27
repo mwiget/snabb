@@ -82,6 +82,9 @@ function send_cache_trigger(r, p, mac)
   local ipv4_hdr = cast(ipv4_header_ptr_type, p.data + n_ether_hdr_size)
   local ipv6_hdr = cast(ipv6_header_ptr_type, p.data + n_ether_hdr_size)
 
+  -- vMX will discard packets not matching its MAC address on the interface
+  ffi.copy(eth_hdr.ether_dhost, mac, 6)
+
   if ethertype == n_ethertype_ipv4 then
     ipv4_hdr.src_ip = n_cache_src_ipv4
     -- clear checksum before calculation
@@ -151,7 +154,7 @@ function nh_fwd:push ()
           -- only required for one packet per breath
           -- because next_hop_mac won't be learned until much later
           cache_refresh_interval = 0
-          send_cache_trigger(output_vmx, packet.clone(pkt))
+          send_cache_trigger(output_vmx, packet.clone(pkt), mac_address)
         end
       end
 
@@ -228,6 +231,14 @@ function nh_fwd:push ()
       local ethertype = eth_hdr.ether_type
       local ipv4_hdr = cast(ipv4_header_ptr_type, pkt.data + n_ether_hdr_size)
       local ipv6_hdr = cast(ipv6_header_ptr_type, pkt.data + n_ether_hdr_size)
+
+      --[[
+  if ethertype == n_ethertype_ipv4 then
+    print(string.format("from vmx ipv4 %s", ipv4:ntop(ipv4_hdr.dst_ip)))
+  elseif ethertype == n_ethertype_ipv6 then
+    print(string.format("from vmx ipv6 %s", ipv6:ntop(ipv6_hdr.dst_ip)))
+  end
+  --]]
 
       if service_mac and C.memcmp(eth_hdr.ether_dhost, service_mac, 6) == 0 then
         transmit(output_service, pkt)
