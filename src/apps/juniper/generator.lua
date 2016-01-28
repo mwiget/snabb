@@ -49,6 +49,18 @@ struct {
 
 udp_header_ptr_type = ffi.typeof("$*", udp_header_t)
 
+local icmp_header_t = ffi.typeof[[
+struct {
+  uint8_t    icmp_type;
+  uint8_t    code;
+  uint16_t   checksum;
+  uint16_t   id;
+  uint16_t   sequence;
+} __attribute__((packed))
+]]
+
+icmp_header_ptr_type = ffi.typeof("$*", icmp_header_t)
+
 local rd32, wr32 = lwutil.rd32, lwutil.wr32
 
 local receive, transmit = link.receive, link.transmit
@@ -63,6 +75,7 @@ function generator:new(arg)
   local ipv4_address = conf.ip and ipv4:pton(conf.ip)
   local count = conf.count or 1
   local port = conf.port or 1024
+  local protocol = conf.protocol or "udp"
   local payload_size = conf.size or 0
   local ipv4_address_offset = 0
   local debug = conf.debug or 0
@@ -77,17 +90,27 @@ function generator:new(arg)
 
   local ipv4_hdr = cast(ipv4_header_ptr_type, master_pkt.data + 14)
   ipv4_hdr.src_ip = ipv4:pton("1.1.1.1")
-  ipv4_hdr.protocol = 17
   ipv4_hdr.ttl = 15
   ipv4_hdr.ihl_v_tos = C.htons(0x4500) -- v4
   ipv4_hdr.id = 0
   ipv4_hdr.frag_off = 0
   ipv4_hdr.total_length = C.htons(28 + payload_size)
 
-  local udp_hdr = cast(udp_header_ptr_type, master_pkt.data + 34)
-  udp_hdr.src_port = C.htons(12345)
-  udp_hdr.len = C.htons(payload_size)
-  udp_hdr.checksum = 0
+  local udp_hdr, icmp_hdr
+
+  if protocol == 'udp' then
+    ipv4_hdr.protocol = 17  -- UDP(17)
+    udp_hdr = cast(udp_header_ptr_type, master_pkt.data + 34)
+    udp_hdr.src_port = C.htons(12345)
+    udp_hdr.len = C.htons(payload_size)
+    udp_hdr.checksum = 0
+  else
+    ipv4_hdr.protocol = 1   -- ICMP(1)
+    icmp_hdr = cast(icmp_header_ptr_type, master_pkt.data + 34)
+    icmp_hdr.icmp_type = 8 -- echo request
+    icmp_hdr.code = 0
+    icmp_hdr.checksum = 0
+  end
 
   local master_pkt_length = 34 + 8 + payload_size
 
@@ -102,6 +125,8 @@ function generator:new(arg)
     master_pkt = master_pkt,
     ipv4_hdr = ipv4_hdr,
     udp_hdr = udp_hdr,
+    icmp_hdr = icmp_hdr,
+    protocol = protocol,
     debug = debug
   }
   return setmetatable(o, {__index=generator})
@@ -121,7 +146,9 @@ function generator:push ()
   local master_pkt = self.master_pkt
   local ipv4_hdr = self.ipv4_hdr
   local udp_hdr = self.udp_hdr
+  local icmp_hdr = self.icmp_hdr
   local debug = self.debug
+  local protocol = self.protocol
 
   local link_writable = link.nwritable(output)
   if debug > 1 then
@@ -134,7 +161,13 @@ function generator:push ()
     local ipdst = C.ntohl(rd32(ipv4_hdr.dst_ip))
     ipdst = C.htonl(ipdst + self.ipv4_address_offset)
     wr32(ipv4_hdr.dst_ip, ipdst)
-    udp_hdr.dst_port = C.htons(self.current_port)
+    if protocol == 'udp' then
+      udp_hdr.dst_port = C.htons(self.current_port)
+    else
+      icmp_hdr.id = C.htons(self.current_port)
+      icmp_hdr.checksum =  0
+      icmp_hdr.checksum =  C.htons(ipsum(master_pkt.data + 34, 8, 0))
+    end
     ipv4_hdr.checksum =  0
     ipv4_hdr.checksum = C.htons(ipsum(master_pkt.data + 14, 20, 0))
 
