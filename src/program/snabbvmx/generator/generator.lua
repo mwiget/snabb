@@ -25,7 +25,7 @@ end
 
 function parse_args(args)
    if #args == 0 then show_usage(1) end
-   local pciaddr, mac, ip, count, port, size
+   local pciaddr, mac, ip, count, port, size, protocol
    local opts = { verbosity = 0, debug = 0 }
    local handlers = {}
    function handlers.v () opts.verbosity = opts.verbosity + 1 end
@@ -38,6 +38,9 @@ function parse_args(args)
    end
    function handlers.t(arg)
       tapaddr = arg
+   end
+   function handlers.P(arg)
+      protocol = arg
    end
    function handlers.m(arg)
       mac = arg
@@ -58,21 +61,21 @@ function parse_args(args)
      size = tonumber(arg)
    end
    function handlers.h() show_usage(0) end
-   lib.dogetopt(args, handlers, "p:t:m:i:n:o:s:dvD:h",
+   lib.dogetopt(args, handlers, "p:t:m:i:n:o:s:P:dvD:h",
       { ["pci"] = "p", ["tap"] = 't', ["mac"] = "m", ["ip"] = "i", ["count"] = "n",
-        ["port"] = "o", ["size"] = "s", debug = "d",
+        ["port"] = "o", ["size"] = "s", ["protocol"] = "P", debug = "d",
         verbose = "v", duration = "D", help = "h" })
-   return opts, pciaddr, mac, ip, count, port, size
+   return opts, pciaddr, mac, ip, count, port, size, protocol
 end
 
 function run(args)
-  local opts, pciaddr, mac, ip, count, port, size = parse_args(args)
+  local opts, pciaddr, mac, ip, count, port, size, protocol = parse_args(args)
   local conf = {}
 
   local c = config.new()
 
   config.app(c, "generator", generator, 
-  {mac = mac, ip = ip, count = count, port = port, size = size, debug = opts.debug})
+  {mac = mac, ip = ip, count = count, port = port, size = size, protocol = protocol, debug = opts.debug})
 
   config.app(c, "rx", basic_apps.Statistics)
 
