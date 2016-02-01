@@ -59,6 +59,9 @@ local n_ipencap = 4
 local n_ipfragment = 44
 local n_cache_src_ipv4 = ipv4:pton("0.0.0.0")
 local n_cache_src_ipv6 = ipv6:pton("fe80::")
+local n_next_hop_mac = ethernet:pton("00:00:00:00:00:00")
+local n_next_hop_mac_empty = ethernet:pton("00:00:00:00:00:00")
+
 
 local receive, transmit = link.receive, link.transmit
 
@@ -111,6 +114,8 @@ function nh_fwd:new(arg)
   local description = conf.description or "nh_fwd"
   if next_hop_mac then
     print("next_hop_mac " .. ethernet:ntop(next_hop_mac) .. " on " .. description)
+  else
+    next_hop_mac = n_next_hop_mac
   end
   print(string.format("cache_refresh_interval set to %d seconds",cache_refresh_interval))
 
@@ -158,9 +163,10 @@ function nh_fwd:push ()
         end
       end
 
-      if next_hop_mac then
+      -- only use a cached, non-empty, mac address 
+      if C.memcmp(next_hop_mac, n_next_hop_mac_empty, 6) ~= 0 then
         -- set nh mac and send the packet out the wire
-        eth_hdr.ether_dhost = next_hop_mac 
+        ffi.copy(eth_hdr.ether_dhost, next_hop_mac, 6)
         transmit(output_wire, pkt)
       elseif output_vmx then
         -- no nh mac. Punch it to the vMX
@@ -245,11 +251,11 @@ function nh_fwd:push ()
       elseif cache_refresh_interval > 0 then
         if ethertype == n_ethertype_ipv4 and C.memcmp(ipv4_hdr.src_ip, n_cache_src_ipv4,4) == 0 then    
           -- our magic cache next-hop resolution packet. Never send this out
-          self.next_hop_mac = eth_hdr.ether_dhost
+          ffi.copy(self.next_hop_mac, eth_hdr.ether_dhost, 6)
 --          print(description .. " learning ipv4 nh mac address " .. ethernet:ntop(self.next_hop_mac))
           packet.free(pkt)
         elseif ethertype == n_ethertype_ipv6 and C.memcmp(ipv6_hdr.src_ip, n_cache_src_ipv6,16) == 0 then
-          self.next_hop_mac = eth_hdr.ether_dhost
+          ffi.copy(self.next_hop_mac, eth_hdr.ether_dhost, 6)
 --          print(description .. " learning ipv6 nh mac address " .. ethernet:ntop(self.next_hop_mac))
           packet.free(pkt)
         else
