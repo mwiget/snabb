@@ -25,7 +25,7 @@ end
 
 function parse_args(args)
    if #args == 0 then show_usage(1) end
-   local pciaddr, mac, ip, count, port, size, protocol
+   local pciaddr, mac, ip, count, port, size, protocol, mtu
    local opts = { verbosity = 0, debug = 0 }
    local handlers = {}
    function handlers.v () opts.verbosity = opts.verbosity + 1 end
@@ -54,6 +54,9 @@ function parse_args(args)
    function handlers.n(arg)
      count = tonumber(arg)
    end
+   function handlers.X(arg)
+     mtu = tonumber(arg)
+   end
    function handlers.o(arg)
      port = tonumber(arg)
    end
@@ -61,15 +64,15 @@ function parse_args(args)
      size = tonumber(arg)
    end
    function handlers.h() show_usage(0) end
-   lib.dogetopt(args, handlers, "p:t:m:i:n:o:s:P:dvD:h",
+   lib.dogetopt(args, handlers, "p:t:m:i:n:o:s:P:X:dvD:h",
       { ["pci"] = "p", ["tap"] = 't', ["mac"] = "m", ["ip"] = "i", ["count"] = "n",
-        ["port"] = "o", ["size"] = "s", ["protocol"] = "P", debug = "d",
+        ["port"] = "o", ["size"] = "s", ["protocol"] = "P", ["mtu"] = "X", debug = "d",
         verbose = "v", duration = "D", help = "h" })
-   return opts, pciaddr, mac, ip, count, port, size, protocol
+   return opts, pciaddr, mac, ip, count, port, size, protocol, mtu
 end
 
 function run(args)
-  local opts, pciaddr, mac, ip, count, port, size, protocol = parse_args(args)
+  local opts, pciaddr, mac, ip, count, port, size, protocol, mtu = parse_args(args)
   local conf = {}
 
   local c = config.new()
@@ -86,7 +89,7 @@ function run(args)
       fatal(("Couldn't find device information for PCI address '%s'"):format(pciaddr))
     end
     config.app(c, "nic", require(device_info.driver).driver,
-    {pciaddr = pciaddr, vmdq = false})
+    {pciaddr = pciaddr, vmdq = false, mtu = mtu})
     config.link(c, "nic.tx -> rx.input")
     config.link(c, "generator.output -> nic.rx")
 

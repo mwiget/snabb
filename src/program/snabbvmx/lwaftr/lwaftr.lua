@@ -92,7 +92,7 @@ function parse_args(args)
    return opts, conf_file, v1id, v1pci, v1mac, v2id, v2pci, v2mac, sock_path
 end
 
-local function config_interface(c, id, pciaddr, mac, nic_name, nh_fwd_name, interface, sock_path)
+local function config_interface(c, id, pciaddr, mac, nic_name, nh_fwd_name, interface, sock_path, mtu)
 
      assert(type(interface) == 'table')
 
@@ -115,7 +115,7 @@ local function config_interface(c, id, pciaddr, mac, nic_name, nh_fwd_name, inte
            fatal(("Couldn't find device information for PCI address '%s'"):format(pciaddr))
          end
          config.app(c, nic_name, require(device_info.driver).driver,
-         {pciaddr = pciaddr, vmdq = true, vlan = vlan, macaddr = mac})
+         {pciaddr = pciaddr, vmdq = true, vlan = vlan, macaddr = mac, mtu = mtu})
          config.link(c, nic_name .. ".tx -> " .. nh_fwd_name .. ".wire")
          config.link(c, nh_fwd_name .. ".wire -> " .. nic_name .. ".rx")
        end
@@ -138,15 +138,26 @@ function run(args)
 
    local c = config.new()
 
+   local lwconf
+
+   if conf.lwaftr then
+     lwconf = lwaftr_conf.load_lwaftr_config(conf.lwaftr)
+   end
+
+   local v6_mtu = lwconf and lwconf.ipv6_mtu or 1500
+   local v4_mtu = lwconf and lwconf.ipv4_mtu or 1460
+
+   print(string.format("IPv6 MTU set to %d", v6_mtu))
+   print(string.format("IPv4 MTU set to %d", v4_mtu))
+
    if (conf.ipv6_interface and conf.ipv4_interface) then
-     config_interface(c, v1id, v1pci, v1mac, 'v6nic', 'nh_fwd1', conf.ipv6_interface, sock_path)
-     config_interface(c, v2id, v2pci, v2mac, 'v4nic', 'nh_fwd2', conf.ipv4_interface, sock_path)
+     config_interface(c, v1id, v1pci, v1mac, 'v6nic', 'nh_fwd1', conf.ipv6_interface, sock_path, v6_mtu)
+     config_interface(c, v2id, v2pci, v2mac, 'v4nic', 'nh_fwd2', conf.ipv4_interface, sock_path, v4_mtu)
    else
      fatal(("need ipv4_interface and ipv6_interface group in %s"):format(conf_file))
    end
 
    if conf.lwaftr then
-     local lwconf = lwaftr_conf.load_lwaftr_config(conf.lwaftr)
      if not file_exists(lwconf.binding_table) then
        fatal(("Couldn't locate binding_table file at %s"):format(lwconf.binding_table))
      end
@@ -161,8 +172,6 @@ function run(args)
      if false ~= v4_fragmentation then
        v4_fragmentation = true
      end
-     local v6_mtu = lwconf.ipv6_mtu or 1500
-     local v4_mtu = lwconf.ipv4_mtu or 1460
 
      if v6_fragmentation then
        print("Enable IPv6 fragmentation and reassembly")
