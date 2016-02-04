@@ -88,7 +88,7 @@ function Reassembler:push ()
          elseif status == fragmentv4.REASSEMBLE_MISSING_FRAGMENT then
             -- Nothing to do, just wait.
          else
-            assert(frag_status == fragmentv4.REASSEMBLE_INVALID)
+            assert(status == fragmentv4.REASSEMBLE_INVALID)
             self:clean_fragment_cache(frags)
             counter.add(reassemble_invalid)
             if maybe_pkt then -- This is an ICMP packet
