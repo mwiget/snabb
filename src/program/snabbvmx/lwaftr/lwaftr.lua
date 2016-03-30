@@ -146,7 +146,9 @@ function run(args)
      mtu = lwconf.ipv4_mtu
    end
 
+   local vlan = conf.settings.vlan
    conf.interface = { mac_address = mac, pci = pci, id = id, mtu = mtu,
+      vlan = vlan,
       discard_threshold = discard_threshold, discard_wait = discard_wait,
       discard_check_timer = discard_check_timer }
    if dir_exists(("/sys/devices/virtual/net/%s"):format(id)) then
