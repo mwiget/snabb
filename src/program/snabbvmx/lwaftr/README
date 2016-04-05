@@ -1,22 +1,21 @@
 Usage: lwaftr --help
-run --conf <config-file> --v1id <port-id> --v1pci <pci-addr> --v1mac <mac address> \
-    --v2id <port-id> --v2pci <pci-addr> --v2mac <mac address> \
+run --conf <config-file> --pci <pci-addr> --id1 <port-id b4> --mac1 <mac address> \
+    --id2 <port-id inet> --mac2 <mac address> \
     --sock <socket-path> [-D <seconds>] [-v] [-u]
 
   --conf   <config-file>   configuration file for lwaftr service
-  --v1id   <port-id>       port_id for virtio socket of INET-side
-  --v1pci  <pci-addr>      PCI device number for the INET-side NIC
-  --v1mac  <mac address>   Ethernet address of virtio interface of INET-side
-  --v2id   <port-id>       port_id for virtio socket of B4-side
-  --v2pci  <pci-addr>      PCI device number for the B4-side NIC
-  --v2mac  <mac address>   Ethernet address of virtio interface of B4-side
+  --pci    <pci-addr>      PCI device 
+  --id1    <port-id>       port_id for virtio_user interface B4 (IPv6)
+  --mac1   <mac address>   Ethernet address
+  --id2    <port-id>       port_id for virtio_user interface INET (IPv4)
+  --mac2   <mac address>   Ethernet address
   --sock   <socket-path>   Socket path for virtio-user interfaces
   -D       <seconds>       Duration in seconds
   -v                       Verbose (repeat for more verbosity)
 
 Example config file:
 
-# cat snabbvmx-lwaftr-em3-em4.cfg
+# cat snabbvmx-lwaftr-xe0.cfg
 return {
   lwaftr = "snabbvmx-lwaftr-em3-em4.conf",
          ipv6_interface = {

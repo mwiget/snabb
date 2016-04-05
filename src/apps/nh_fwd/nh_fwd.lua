@@ -7,6 +7,7 @@ local ethernet = require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local ipv6 = require("lib.protocol.ipv6")
 local ipsum = require("lib.checksum").ipsum
+local shm = require("core.shm")
 
 local lib = require("core.lib")
 local htons = lib.htons
@@ -50,6 +51,8 @@ struct {
 ]]
 local ipv6_header_ptr_type = ffi.typeof("$*", ipv6hdr_t)
 
+local uint32_ptr_t = ffi.typeof('uint32_t*')
+
 local n_ether_hdr_size = 14
 local n_ipv4_hdr_size = 20
 local n_ethertype_ipv4 = htons(0x0800)
@@ -59,13 +62,40 @@ local n_cache_src_ipv4 = ipv4:pton("0.0.0.0")
 local n_cache_src_ipv6 = ipv6:pton("fe80::")
 local n_next_hop_mac_empty = ethernet:pton("00:00:00:00:00:00")
 
+-- keeping this shm here speeds things up
+local v4v6_mirror = shm.map("v4v6_mirror", "struct { uint32_t ipv4; }")
+local o_src_ipv4 = 26
+local o_dst_ipv4 = 30
+local o_ipv6_src_ipv4 = 0x42
+local o_ipv6_dst_ipv4 = 0x46
 
 local receive, transmit = link.receive, link.transmit
+
 
 --- # `nh_fwd` app: Finds next hop mac by sending packets to VM interface
 
 nh_fwd6 = {}
 nh_fwd4 = {}
+
+local function mirror_v6_packet (pkt, mirror, ipv4_num)
+  local ipv4_num = v4v6_mirror.ipv4
+  if ffi.cast(uint32_ptr_t, pkt.data + o_ipv6_src_ipv4)[0] == ipv4_num or
+    ffi.cast(uint32_ptr_t, pkt.data + o_ipv6_dst_ipv4)[0] == ipv4_num then
+    if link.nwritable(mirror) then
+      transmit(mirror, packet.clone(pkt))
+    end
+  end
+end
+
+local function mirror_v4_packet (pkt, mirror)
+  local ipv4_num = v4v6_mirror.ipv4
+  if ffi.cast(uint32_ptr_t, pkt.data + o_src_ipv4)[0] == ipv4_num or
+    ffi.cast(uint32_ptr_t, pkt.data + o_dst_ipv4)[0] == ipv4_num then
+    if link.nwritable(mirror) then
+      transmit(mirror, packet.clone(pkt))
+    end
+  end
+end
 
 local function send_ipv6_cache_trigger(r, p, mac)
 
@@ -114,9 +144,11 @@ function nh_fwd6:new(arg)
   local debug = conf.debug or 0
   local cache_refresh_interval = conf.cache_refresh_interval or 0
   local next_hop_mac = ethernet:pton("00:00:00:00:00:00")
+  local shm_next_hop_mac = shm.map("next_hop_mac_v6", "struct { uint8_t ether[6]; }")
 
   if conf.next_hop_mac then
     next_hop_mac = conf.next_hop_mac and ethernet:pton(conf.next_hop_mac)
+    ffi.copy(shm_next_hop_mac, next_hop_mac, 6)
     print(string.format("nh_fwd6: static next_hop_mac %s", ethernet:ntop(next_hop_mac)))
   end
 
@@ -133,11 +165,14 @@ function nh_fwd6:new(arg)
   local o = {
     mac_address = mac_address,
     next_hop_mac = next_hop_mac,
+    shm_next_hop_mac = next_hop_mac,
     ipv6_address = ipv6_address,
     service_mac = service_mac,
     debug = debug,
     cache_refresh_time = 0,
-    cache_refresh_interval = cache_refresh_interval
+    cache_refresh_interval = cache_refresh_interval,
+    logger = lib.logger_new({ module = 'nh_fwd6' }),
+    mirror = conf.mirror or false
   }
 
   return setmetatable(o, {__index=nh_fwd6})
@@ -151,9 +186,11 @@ function nh_fwd4:new(arg)
   local debug = conf.debug or 0
   local cache_refresh_interval = conf.cache_refresh_interval or 0
   local next_hop_mac = ethernet:pton("00:00:00:00:00:00")
+  local shm_next_hop_mac = shm.map("next_hop_mac_v4", "struct { uint8_t ether[6]; }")
 
   if conf.next_hop_mac then
     next_hop_mac = conf.next_hop_mac and ethernet:pton(conf.next_hop_mac)
+    ffi.copy(shm_next_hop_mac, next_hop_mac, 6)
     print(string.format("nh_fwd4: static next_hop_mac %s", ethernet:ntop(next_hop_mac)))
   end
 
@@ -170,11 +207,14 @@ function nh_fwd4:new(arg)
   local o = {
     mac_address = mac_address,
     next_hop_mac = next_hop_mac,
+    shm_next_hop_mac = next_hop_mac,
     ipv4_address = ipv4_address,
     service_mac = service_mac,
     debug = debug,
     cache_refresh_time = 0,
-    cache_refresh_interval = cache_refresh_interval
+    cache_refresh_interval = cache_refresh_interval,
+    logger = lib.logger_new({ module = 'nh_fwd4' }),
+    mirror = conf.mirror or false
   }
 
   return setmetatable(o, {__index=nh_fwd4})
@@ -190,12 +230,22 @@ function nh_fwd6:push ()
   local service_mac = self.service_mac
   local mac_address = self.mac_address
   local current_time = tonumber(app.now())
-
+  local mirror
+  local ipv4_num = 0
+  if self.mirror then
+    mirror = self.output.mirror
+    ipv4_num = v4v6_mirror.ipv4
+  end
+  
   -- ipv6 from wire
   for _=1,link.nreadable(input_wire) do
     local pkt = receive(input_wire)
     local eth_hdr = ffi.cast(ethernet_header_ptr_type, pkt.data)
     local ipv6_hdr = ffi.cast(ipv6_header_ptr_type, pkt.data + n_ether_hdr_size)
+
+    if ipv4_num > 0 then
+      mirror_v6_packet(pkt, mirror, ipv4_num)
+    end
 
     -- print(string.format("ipv6 %s", ipv6:ntop(ipv6_hdr.dst_ip)))
     if ipv6_hdr.next_header == n_ipencap or ipv6_hdr.next_header == n_ipfragment then
@@ -220,14 +270,18 @@ function nh_fwd6:push ()
       elseif self.cache_refresh_interval > 0 then
         if C.memcmp(ipv6_hdr.src_ip, n_cache_src_ipv6, 16) == 0 then
           ffi.copy(self.next_hop_mac, eth_hdr.ether_dhost, 6)
-          if self.debug > 0 then
-            print("nh_fwd6: learning next-hop " .. ethernet:ntop(self.next_hop_mac))
-          end
+          ffi.copy(self.shm_next_hop_mac, eth_hdr.ether_dhost, 6)
           packet.free(pkt)
         else
+          if ipv4_num > 0 then
+            mirror_v6_packet(pkt, mirror, ipv4_num)
+          end
           transmit(output_wire, pkt)
         end
       else
+        if ipv4_num > 0 then
+          mirror_v6_packet(pkt, mirror, ipv4_num)
+        end
         transmit(output_wire, pkt)
       end
     end
@@ -241,6 +295,9 @@ function nh_fwd6:push ()
     if self.cache_refresh_interval > 0 and output_vmx then
       if current_time > self.cache_refresh_time + self.cache_refresh_interval then
         self.cache_refresh_time = current_time
+        if C.memcmp(next_hop_mac, n_next_hop_mac_empty, 4) == 0 then
+          self.logger:log("no next-hop. Send cache trigger")
+        end
         send_ipv6_cache_trigger(output_vmx, packet.clone(pkt), mac_address)
       end
     end
@@ -249,6 +306,9 @@ function nh_fwd6:push ()
     if C.memcmp(next_hop_mac, n_next_hop_mac_empty, 4) ~= 0 then
       -- set nh mac and send the packet out the wire
       ffi.copy(eth_hdr.ether_dhost, next_hop_mac, 6)
+      if ipv4_num > 0 then
+        mirror_v6_packet(pkt, mirror, ipv4_num)
+      end
       transmit(output_wire, pkt)
     else
       if self.cache_refresh_interval == 0 and output_vmx then
@@ -273,6 +333,12 @@ function nh_fwd4:push ()
   local service_mac = self.service_mac
   local mac_address = self.mac_address
   local current_time = tonumber(app.now())
+  local mirror
+  local ipv4_num = 0
+  if self.mirror then
+    mirror = self.output.mirror
+    ipv4_num = v4v6_mirror.ipv4
+  end
 
   -- ipv4 from wire
   for _=1,link.nreadable(input_wire) do
@@ -280,6 +346,10 @@ function nh_fwd4:push ()
     local eth_hdr = ffi.cast(ethernet_header_ptr_type, pkt.data)
     local ipv4_hdr = ffi.cast(ipv4_header_ptr_type, pkt.data + n_ether_hdr_size)
     local ipv4_address = self.ipv4_address
+
+    if ipv4_num > 0 then
+      mirror_v4_packet(pkt, mirror, ipv4_num)
+    end
 
     -- print(string.format("ipv4 %s", ipv4:ntop(ipv4_hdr.dst_ip)))
     if eth_hdr.ether_type == n_ethertype_ipv4 and C.memcmp(ipv4_hdr.dst_ip, ipv4_address, 4) ~= 0 then
@@ -305,11 +375,12 @@ function nh_fwd4:push ()
         if C.memcmp(ipv4_hdr.src_ip, n_cache_src_ipv4,4) == 0 then    
           -- our magic cache next-hop resolution packet. Never send this out
           ffi.copy(self.next_hop_mac, eth_hdr.ether_dhost, 6)
-          if self.debug > 0 then
-            print("nh_fwd4: learning next-hop " .. ethernet:ntop(self.next_hop_mac))
-          end
+          ffi.copy(self.shm_next_hop_mac, eth_hdr.ether_dhost, 6)
           packet.free(pkt)
         else
+          if ipv4_num > 0 then
+            mirror_v4_packet(pkt, mirror, ipv4_num)
+          end
           transmit(output_wire, pkt)
         end
       else
@@ -326,6 +397,9 @@ function nh_fwd4:push ()
     if self.cache_refresh_interval > 0 and output_vmx then
       if current_time > self.cache_refresh_time + self.cache_refresh_interval then
         self.cache_refresh_time = current_time
+        if C.memcmp(next_hop_mac, n_next_hop_mac_empty, 4) == 0 then
+          self.logger:log("no next-hop. Send cache trigger")
+        end
         send_ipv4_cache_trigger(output_vmx, packet.clone(pkt), mac_address)
       end
     end
@@ -334,6 +408,9 @@ function nh_fwd4:push ()
     if C.memcmp(next_hop_mac, n_next_hop_mac_empty, 4) ~= 0 then
       -- set nh mac and send the packet out the wire
       ffi.copy(eth_hdr.ether_dhost, next_hop_mac, 6)
+      if ipv4_num > 0 then
+        mirror_v4_packet(pkt, mirror, ipv4_num)
+      end
       transmit(output_wire, pkt)
     else
       if self.cache_refresh_interval == 0 and output_vmx then

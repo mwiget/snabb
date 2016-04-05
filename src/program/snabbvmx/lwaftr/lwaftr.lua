@@ -33,7 +33,7 @@ end
 
 function parse_args(args)
    if #args == 0 then show_usage(1) end
-   local conf_file, sock_path, mac, id, pci, vmxtap
+   local conf_file, sock_path, pci, id1, mac1, id2, mac2, vmxtap
    local opts = { verbosity = 0 }
    local handlers = {}
    function handlers.v () opts.verbosity = opts.verbosity + 1 end
@@ -50,9 +50,15 @@ function parse_args(args)
      end
    end
    function handlers.i(arg)
-      id = arg
+      id1 = arg
       if not arg then
-         fatal("Argument '--id' was not set")
+         fatal("Argument '--id1' was not set")
+      end
+   end
+   function handlers.j(arg)
+      id2 = arg
+      if not arg then
+         fatal("Argument '--id2' was not set")
       end
    end
    function handlers.p(arg)
@@ -62,9 +68,15 @@ function parse_args(args)
       end
    end
    function handlers.m(arg)
-      mac = arg
+      mac1 = arg
       if not arg then
-         fatal("Argument '--mac' was not set")
+         fatal("Argument '--mac1' was not set")
+      end
+   end
+   function handlers.n(arg)
+      mac2 = arg
+      if not arg then
+         fatal("Argument '--mac2' was not set")
       end
    end
    function handlers.s(arg)
@@ -80,15 +92,16 @@ function parse_args(args)
       end
    end
    function handlers.h() show_usage(0) end
-   lib.dogetopt(args, handlers, "c:s:t:i:p:m:vD:h",
+   lib.dogetopt(args, handlers, "c:s:t:i:p:m:j:n:vD:h",
       { ["conf"] = "c", ["sock"] = "s", ["tap"] = "t",
-        ["id"] = "i", ["pci"] = "p", ["mac"] = "m",
+        ["id1"] = "i", ["pci"] = "p", ["mac1"] = "m",
+        ["id2"] = "j", ["mac2"] = "n",
         verbose = "v", duration = "D", help = "h" })
-   return opts, conf_file, id, pci, mac, sock_path, vmxtap
+   return opts, conf_file, pci, id1, mac1, id2, mac2, sock_path, vmxtap
 end
 
 function run(args)
-   local opts, conf_file, id, pci, mac, sock_path, vmxtap = parse_args(args)
+   local opts, conf_file, pci, id1, mac1, id2, mac2, sock_path, vmxtap = parse_args(args)
 
 
    local conf = {}
@@ -111,7 +124,7 @@ function run(args)
      lwconf.ipv4_mtu = lwconf.ipv4_mtu or 1460
    else
      ring_buffer_size = 1024
-     print(string.format("interface %s set to passhtru mode", id))
+     print(string.format("interface %s set to passhtru mode", id1))
    end
 
    local c = config.new()
@@ -127,32 +140,20 @@ function run(args)
          fatal("ring size is not a power of two: " .. ring_buffer_size)
        end
      end
-     if conf.settings.discard_threshold then
-       discard_threshold = conf.settings.discard_threshold
-     end
-     if conf.settings.discard_check_timer then
-       discard_check_timer = conf.settings.discard_check_timer
-     end
-     if conf.settings.discard_wait then
-       discard_wait = conf.settings.discard_wait
-     end
    end
 
    print(string.format("ring_buffer_size set to %d", ring_buffer_size))
    require('apps.intel.intel10g').num_descriptors = ring_buffer_size
 
-   local mtu = lwconf.ipv6_mtu
-   if mtu < lwconf.ipv4_mtu then
-     mtu = lwconf.ipv4_mtu
-   end
+   conf.ipv6_interface.pci = pci
+   conf.ipv4_interface.pci = pci
+   conf.ipv6_interface.mtu = conf.ipv6_interface.mtu or lwconf.ipv6_mtu
+   conf.ipv4_interface.mtu = conf.ipv4_interface.mtu or lwconf.ipv4_mtu
+   conf.ipv6_interface.mac_address, conf.ipv6_interface.id = mac1, id1
+   conf.ipv4_interface.mac_address, conf.ipv4_interface.id = mac2, id2
 
-   local vlan = conf.settings.vlan
-   conf.interface = { mac_address = mac, pci = pci, id = id, mtu = mtu,
-      vlan = vlan,
-      discard_threshold = discard_threshold, discard_wait = discard_wait,
-      discard_check_timer = discard_check_timer }
-   if dir_exists(("/sys/devices/virtual/net/%s"):format(id)) then
-     conf.interface.mirror_id = id
+   if dir_exists(("/sys/devices/virtual/net/%s"):format(id1)) then
+     conf.settings.mirror_id = id1
    end
 
    print (string.format("vmxtap is set to %s", vmxtap))
