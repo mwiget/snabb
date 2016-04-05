@@ -6,6 +6,7 @@ local config = require("core.config")
 local pci = require("lib.hardware.pci")
 local Intel82599 = require("apps.intel.intel_app").Intel82599
 local basic_apps = require("apps.basic.basic_apps")
+local loadgen = require("apps.lwaftr.loadgen")
 local main = require("core.main")
 local PcapReader = require("apps.pcap.pcap").PcapReader
 local lib = require("core.lib")
@@ -105,7 +106,7 @@ function run(args)
       stream.rx_sink_id = 'rx_sink_'..stream.rx_id
 
       config.app(c, stream.pcap_id, PcapReader, stream.capture_file)
-      config.app(c, stream.repeater_id, basic_apps.RateLimitedRepeater, {})
+      config.app(c, stream.repeater_id, loadgen.RateLimitedRepeater, {})
       config.app(c, stream.nic_tx_id, Intel82599, { pciaddr = stream.pci_addr })
       config.app(c, stream.rx_sink_id, basic_apps.Sink)
 

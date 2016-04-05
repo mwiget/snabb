@@ -3,7 +3,7 @@ module(..., package.seeall)
 local app = require("core.app")
 local config = require("core.config")
 local lib = require("core.lib")
-local csv_stats  = require("lib.csv_stats")
+local csv_stats  = require("program.lwaftr.csv_stats")
 local setup = require("program.lwaftr.setup")
 
 function show_usage(code)

@@ -18,15 +18,11 @@ end
 
 function parse_args(args)
    local opts, handlers = {}, {}
-   opts.mtu = 9000
    function handlers.i()
       opts.from_inet = true
    end
    function handlers.b()
       opts.from_b4 = true
-   end
-   function handlers.M(arg)
-      opts.mtu = assert(tonumber(arg), "mtu must be a number")
    end
    function handlers.m(arg)
       opts.max_packets = assert(tonumber(arg), "max-packets must be a number")
@@ -43,10 +39,9 @@ function parse_args(args)
    function handlers.h()
       show_usage(0)
    end
-   args = lib.dogetopt(args, handlers, "ibm:s:M:D:p:h",
+   args = lib.dogetopt(args, handlers, "ibm:s:D:p:h",
       { ["from-inet"]="i", ["from-b4"]="b",
         ["max-packets"]="m", ["packet-size"]="s",
-        ["mtu"]="M",
         duration="D", pcap="p", help="h" })
    return opts, args
 end
@@ -65,7 +60,6 @@ function run(args)
    if opts.pcap and not opts.max_packets then
       opts.max_packets = DEFAUL_MAX_PACKETS
    end
-
 
    local lwaftr_config, start_inet, psid_len, pciaddr
    if opts.from_inet then
@@ -116,7 +110,7 @@ function run(args)
       config.link(c, "generator.output -> pcap.input")
       opts.duration = opts.duration or 1
    else
-      config.app(c, "nic", Intel82599, { pciaddr = pciaddr, mtu = opts.mtu })
+      config.app(c, "nic", Intel82599, { pciaddr = pciaddr })
       config.link(c, "generator.output -> nic.rx")
    end
 

@@ -413,6 +413,7 @@ local function encapsulate_and_transmit(lwstate, pkt, ipv6_dst, ipv6_src)
    end
    counter.add(v6sentPacket)
    counter.add(v6sentByte, pkt.length)
+
    return transmit(lwstate.o6, pkt)
 end
 

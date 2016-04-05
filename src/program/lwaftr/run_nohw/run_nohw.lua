@@ -1,6 +1,6 @@
 module(..., package.seeall)
 
-local CSVStatsTimer = require("lib.csv_stats").CSVStatsTimer
+local CSVStatsTimer = require("program.lwaftr.csv_stats").CSVStatsTimer
 local ethernet = require("lib.protocol.ethernet")
 local RawSocket = require("apps.socket.raw").RawSocket
 local LwAftr = require("apps.lwaftr.lwaftr").LwAftr

@@ -38,8 +38,8 @@ dist: all
 	mkdir "$(DISTDIR)"
 	git clone "$(BUILDDIR)" "$(DISTDIR)/snabbswitch"
 	rm -rf "$(DISTDIR)/snabbswitch/.git"
-	cp "$(BUILDDIR)/src/$(DIST_BINARY)" "$(DISTDIR)/$(DIST_BINARY)"
+	cp "$(BUILDDIR)/src/snabb" "$(DISTDIR)/$(DIST_BINARY)"
 	cd "$(DISTDIR)/.." && tar cJvf "`basename '$(DISTDIR)'`.tar.xz" "`basename '$(DISTDIR)'`"
 	rm -rf "$(DISTDIR)"
 
-p.SERIAL: all
+.SERIAL: all
