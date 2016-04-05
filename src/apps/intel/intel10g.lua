@@ -219,11 +219,11 @@ function M_sf:init_qprdc ()
                           if discards > self.qprdc.discards + discard_threshold then
                             local now = tonumber(app.now())
                             if self.qprdc.last_trigger < now then
-                              self.logger:log(string.format("Interface %s ingress packet drops %d, running jit.flush()",self.pciaddress, discards))
+                              self.logger:log(string.format("Interface %s ingress packet drops %d, running jit.flush()",self.pciaddress, discards - self.qprdc.discards))
                               jit.flush()
                               self.qprdc.last_trigger = now + discard_wait
                             else
-                              self.logger:log(string.format("Interface %s ingress packet drops %d",self.pciaddress, discards))
+                              self.logger:log(string.format("Interface %s ingress packet drops %d",self.pciaddress, discards - self.qprdc.discards))
                             end
                           end
                           self.qprdc.discards = discards
