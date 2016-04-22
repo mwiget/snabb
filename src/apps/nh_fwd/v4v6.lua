@@ -22,7 +22,7 @@ local uint16_ptr_t = ffi.typeof('uint16_t*')
 local uint32_ptr_t = ffi.typeof('uint32_t*')
 
 -- keeping this shm here speeds things up
-local v4v6_mirror = shm.map("v4v6_mirror", "struct { uint32_t ipv4; }")
+local v4v6_mirror = shm.create("v4v6_mirror", "struct { uint32_t ipv4; }")
 
 local function mirror_v6_packet (pkt, mirror, ipv4_num)
   local ipv4_num = v4v6_mirror.ipv4

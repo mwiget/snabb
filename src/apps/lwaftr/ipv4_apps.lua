@@ -35,10 +35,10 @@ Reassembler = {}
 Fragmenter = {}
 ICMPEcho = {}
 
-local reassemble_ok      = counter.open("lwaftr_v4/reassemble_ok")
-local reassemble_invalid = counter.open("lwaftr_v4/reassemble_invalid")
-local fragment_ok        = counter.open("lwaftr_v4/fragment_ok")
-local fragment_forbidden = counter.open("lwaftr_v4/fragment_forbidden")
+reassemble_ok      = counter.open("lwaftr_v4/reassemble_ok")
+reassemble_invalid = counter.open("lwaftr_v4/reassemble_invalid")
+fragment_ok        = counter.open("lwaftr_v4/fragment_ok")
+fragment_forbidden = counter.open("lwaftr_v4/fragment_forbidden")
 
 function Reassembler:new(conf)
    local o = setmetatable({}, {__index=Reassembler})

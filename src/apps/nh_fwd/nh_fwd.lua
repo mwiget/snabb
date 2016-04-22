@@ -115,7 +115,7 @@ function nh_fwd6:new(arg)
   local debug = conf.debug or 0
   local cache_refresh_interval = conf.cache_refresh_interval or 0
 --  local next_hop_mac = ethernet:pton("00:00:00:00:00:00")
-  local next_hop_mac = shm.map("next_hop_mac_v6", "struct { uint8_t ether[6]; }")
+  local next_hop_mac = shm.create("next_hop_mac_v6", "struct { uint8_t ether[6]; }")
 
   if conf.next_hop_mac then
     next_hop_mac = conf.next_hop_mac and ethernet:pton(conf.next_hop_mac)
@@ -153,7 +153,7 @@ function nh_fwd4:new(arg)
   local debug = conf.debug or 0
   local cache_refresh_interval = conf.cache_refresh_interval or 0
 --  local next_hop_mac = ethernet:pton("00:00:00:00:00:00")
-  local next_hop_mac = shm.map("next_hop_mac_v4", "struct { uint8_t ether[6]; }")
+  local next_hop_mac = shm.create("next_hop_mac_v4", "struct { uint8_t ether[6]; }")
 
   if conf.next_hop_mac then
     next_hop_mac = conf.next_hop_mac and ethernet:pton(conf.next_hop_mac)
