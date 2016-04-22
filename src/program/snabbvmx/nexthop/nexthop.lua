@@ -26,8 +26,8 @@ function run (args)
 --        print("pid " .. pid .. " type is " .. type(pid))
         local nh_v4_path = "//" .. pid .. "/next_hop_mac_v4"
         local nh_v6_path = "//" .. pid .. "/next_hop_mac_v6"
-        local nh_v4 = shm.map(nh_v4_path, "struct { uint8_t ether[6]; }")
-        local nh_v6 = shm.map(nh_v6_path, "struct { uint8_t ether[6]; }")
+        local nh_v4 = shm.open(nh_v4_path, "struct { uint8_t ether[6]; }")
+        local nh_v6 = shm.open(nh_v6_path, "struct { uint8_t ether[6]; }")
 
         print(string.format("%d: next_hop_mac for IPv4 is %s", pid, ethernet:ntop(nh_v4.ether)))
         print(string.format("%d: next_hop_mac for IPv6 is %s", pid, ethernet:ntop(nh_v6.ether)))
