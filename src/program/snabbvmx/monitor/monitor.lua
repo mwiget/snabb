@@ -43,7 +43,7 @@ function run (args)
       else
 --        print("pid " .. pid .. " type is " .. type(pid))
         local path = "//" .. pid .. "/v4v6_mirror"
-        local v4v6_mirror = shm.map(path, "struct { uint32_t ipv4; }")
+        local v4v6_mirror = shm.open(path, "struct { uint32_t ipv4; }")
         v4v6_mirror.ipv4 = ipv4_address
         shm.unmap(v4v6_mirror)
       end
