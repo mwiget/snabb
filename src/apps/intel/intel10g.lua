@@ -25,10 +25,8 @@ local app = require("core.app")
 local bits, bitset = lib.bits, lib.bitset
 local band, bor, lshift = bit.band, bit.bor, bit.lshift
 
-num_descriptors = 512
---num_descriptors = 32
---
 ifInDiscards = counter.open("nic/ifInDiscards")
+num_descriptors = 1024
 
 -- Defaults for configurable items
 local default = {
