@@ -1,0 +1,22 @@
+Usage: l2tpv3 --help
+run --conf <config-file> --pci <pci-addr> --mac <mac address> \
+    --sock <socket-path> [-D <seconds>] [-v] [-u]
+
+  --conf   <config-file>   configuration file (l2tpv3 tunnel endpoint to vlan mapping)
+  --pci    <pci-addr>      PCI device number for the NIC
+  --tap    <interface>     TAP interface (instead of PCI)
+  --mac    <mac-address>   MAC address of local PCI/TAP interface
+  --sock   <socket-path>   Socket path for virtio-user interfaces
+  -D       <seconds>       Duration in seconds
+
+Example config file:
+
+# cat snabbvmx-l2tpv3-xe0.cfg
+return {
+   tunnels = {
+      { ipv6=fc00:1::1, vlan=1, lc=00000000, rc=00000000 },
+      { ipv6=fc00:1::2, vlan=2, lc=00000000, rc=00000000 },
+      { ipv6=fc00:1::3, vlan=3, lc=00000000, rc=00000000 },
+      { ipv6=fc00:1::4, vlan=4, lc=00000000, rc=00000000 }
+   }
+}

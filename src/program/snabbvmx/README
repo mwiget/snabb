@@ -3,6 +3,7 @@ Usage:
   snabbvmx top
   snabbvmx monitor
   snabbvmx generator
+  snabbvmx l2tpv3
 
 Use --help for per-command usage.
 

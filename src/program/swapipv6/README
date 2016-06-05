@@ -1,0 +1,4 @@
+Usage:
+  swapipv6 -r ipv6-in.pcap -w ipv6-out.pcap
+
+Use --help for per-command usage.
