@@ -14,6 +14,8 @@ local bit = require("bit")
 local ffi = require("ffi")
 local C = ffi.C
 
+local counter = require("core.counter")
+
 local config = require("core.config")
 local ethernet = require("lib.protocol.ethernet")
 local ipv6 = require("lib.protocol.ipv6")
@@ -120,6 +122,8 @@ local function send_ipv6_cache_trigger(link, mac_address, pkt)
    -- then we just learn the same MAC also for the remote tunnel endpoint ;-)
    ffi.copy(ipv6_hdr.ether_dhost, mac_address, 6)
    ffi.copy(ipv6_hdr.src_ip, n_cache_src_ipv6, 16)
+   counter.add(NhsentPacket)
+   counter.add(NhsentByte, pkt.length)
    transmit(link, pkt)
 
 end
@@ -129,6 +133,30 @@ SimpleKeyedTunnel = {}
 local encap_table = {}
 local decap_table = {}
 local nh_cache_table = {}
+
+-- Counters for statistics.
+v6sentPacket     = counter.open("l2tpv3_v6/sentPacket")
+v6sentByte       = counter.open("l2tpv3_v6/sentByte")
+v6rcvdPacket     = counter.open("l2tpv3_v6/rcvdPacket")
+v6rcvdByte       = counter.open("l2tpv3_v6/rcvdByte")
+v6droppedPacket  = counter.open("l2tpv3_v6/droppedPacket")
+v6droppedByte    = counter.open("l2tpv3_v6/droppedByte")
+v6bridgedPacket  = counter.open("l2tpv3_v6/bridgedPacket")
+v6bridgedByte    = counter.open("l2tpv3_v6/bridgedByte")
+
+NhsentPacket    = counter.open("l2tpv3_nh/sentPacket")
+NhsentByte      = counter.open("l2tpv3_nh/sentByte")
+NhrcvdPacket    = counter.open("l2tpv3_nh/rcvdPacket")
+NhrcvdByte      = counter.open("l2tpv3_nh/rcvdByte")
+
+trsentPacket     = counter.open("l2tpv3_trunk/sentPacket")
+trsentByte       = counter.open("l2tpv3_trunk/sentByte")
+trrcvdPacket     = counter.open("l2tpv3_trunk/rcvdPacket")
+trrcvdByte       = counter.open("l2tpv3_trunk/rcvdByte")
+trdroppedPacket  = counter.open("l2tpv3_trunk/droppedPacket")
+trdroppedByte    = counter.open("l2tpv3_trunk/droppedByte")
+trbridgedPacket  = counter.open("l2tpv3_trunk/bridgedPacket")
+trbridgedByte    = counter.open("l2tpv3_trunk/bridgedByte")
 
 local function encap_packet (self, link, pkt)
 
@@ -142,8 +170,13 @@ local function encap_packet (self, link, pkt)
    -- tagged traffic from trunk side must be IPv6 encapsulated,
    -- as long as the vlan tag is in the tunnel table
    local ethernet_hdr = ffi.cast(eth_vlan_header_ptr_type, pkt.data)
+
+
    local vlan = bit.band(C.ntohs(ethernet_hdr.vlan.tag), 4095)
    local encap = encap_table[vlan]
+
+   counter.add(trrcvdPacket)
+   counter.add(trrcvdByte, pkt.length)
 
    if encap and vlan > 0 then
       local shift_right = ipv6_header_size - 4
@@ -164,21 +197,28 @@ local function encap_packet (self, link, pkt)
       ipv6_hdr.hop_limit = 255
       ipv6_hdr.payload_length = C.htons(pkt.length - ipv6_header_size + 12)
       if current_time > encap.cache_refresh_time + cache_refresh_interval then
-         self.cache_refresh_time = current_time
+         self.encap_table[vlan].cache_refresh_time = current_time
+         -- print(string.format("nh refresh trigger for vlan %d", vlan))
          send_ipv6_cache_trigger(self.output.trunk, mac_address, packet.clone(pkt))
       end
       local ipv6_key = ffi.string(ipv6_hdr.dst_ip, 16)
       local nh_cache =  self.nh_cache_table[ipv6_key] 
       if nh_cache then
          ffi.copy(ipv6_hdr.ether_dhost, nh_cache, 6)
+         counter.add(v6sentPacket)
+         counter.add(v6sentByte, pkt.length)
          transmit(link, pkt)
       else
+         counter.add(v6droppedPacket)
+         counter.add(v6droppedByte, pkt.length)
          packet.free(pkt)  -- TODO verify cookies
       end
    else
-      print(string.format("%s: vlan id %d NOT found in encap table", id, vlan))
+      -- print(string.format("%s: vlan id %d NOT found in encap table", id, vlan))
       --      hex_dump(pkt.data, pkt.length)
-      transmit(link, packet.clone(pkt))
+      counter.add(v6bridgedPacket)
+      counter.add(v6bridgedByte, pkt.length)
+      transmit(link, pkt)
    end
 
 end
@@ -247,39 +287,46 @@ function SimpleKeyedTunnel:push()
    local decap_table = self.decap_table
    local single_stick = self.single_stick
 
-   -- encapsulation path
+   -- encapsulation path with tagged ethernet packets from virtio 
    for _=1, link.nreadable(trunk_in) do
       local pkt = receive(trunk_in)
       local ethernet_hdr = ffi.cast(eth_vlan_header_ptr_type, pkt.data)
-      local ipv6_hdr = ffi.cast(ipv6_header_ptr_type, pkt.data)
       local vlan = bit.band(C.ntohs(ethernet_hdr.vlan.tag), 4095)
-      -- print(string.format("%s: rx pkt to encap on vlan %d src=%s dst=%s ether_type=0x%x", id, vlan, ethernet:ntop(ethernet_hdr.ether_shost), ethernet:ntop(ethernet_hdr.ether_dhost), C.ntohs(ipv6_hdr.ether_type)))
 
       if ethernet_hdr.vlan.tpid == o_ethertype_8021q and vlan > 0 then
          encap_packet(self, ipv6_out, pkt)
       else
-         -- untagged traffic must be passed thru, 
-         -- but process and drop IPv6 next hop resolve packets for their nh mac 
-         -- and IPV6 source address  (TODO)
+         -- L2TPv3 packets (untagged or with vlan id 0) have been sent by
+         -- this app to the virtio interface for next hop resolution.
+         -- Learn and drop.
          local ipv6_hdr = ffi.cast(ipv6_header_ptr_type, pkt.data)
          if ethernet_hdr.vlan.tpid == o_ethertype_8021q then
             ipv6_hdr = ffi.cast(ipv6_vlan_header_ptr_type, pkt.data)
          end
-         if ipv6_hdr.ether_type == o_ethertype_ipv6 and ipv6_hdr.next_header == L2TPV3_NEXT_HEADER then
+         if ipv6_hdr.ether_type == o_ethertype_ipv6 
+            and ipv6_hdr.next_header == L2TPV3_NEXT_HEADER then
             local ipv6_key = ffi.string(ipv6_hdr.dst_ip, 16)
             local decap = decap_table[ipv6_key]
             if decap then
                local mac = ethernet:pton("00:00:00:00:00:00")
                ffi.copy(mac, ipv6_hdr.ether_dhost, 6)
                self.nh_cache_table[ipv6_key] = mac
-               packet.free(pkt)  -- TODO verify cookies?
+
+               -- print(string.format("nh cache for %s at %s", ipv6:ntop(ipv6_hdr.dst_ip), ethernet:ntop(mac)))
+               counter.add(NhrcvdPacket)
+               counter.add(NhrcvdByte, pkt.length)
+               packet.free(pkt)
             else
+               -- print(string.format("%s cache miss for %s", id, ipv6:ntop(ipv6_hdr.dst_ip)))
+               counter.add(v6bridgedPacket)
+               counter.add(v6bridgedByte, pkt.length)
                transmit(ipv6_out, pkt)
             end
          else
+            counter.add(v6bridgedPacket)
+            counter.add(v6bridgedByte, pkt.length)
             transmit(ipv6_out, pkt)
          end
-
       end
    end
 
@@ -287,8 +334,12 @@ function SimpleKeyedTunnel:push()
    for _=1, link.nreadable(ipv6_in) do
       local pkt = receive(ipv6_in)
       local ipv6_hdr = ffi.cast(ipv6_header_ptr_type, pkt.data)
+      -- print(string.format("%s decap pkt received. ether_type=%x", id, C.ntohs(ipv6_hdr.ether_type)))
+
       if ipv6_hdr.ether_type == o_ethertype_ipv6 then
          if ipv6_hdr.next_header == L2TPV3_NEXT_HEADER then
+            counter.add(v6rcvdPacket)
+            counter.add(v6rcvdByte, pkt.length)
             local ipv6_key = ffi.string(ipv6_hdr.src_ip, 16)
             local decap = decap_table[ipv6_key]
             if decap then
@@ -301,84 +352,40 @@ function SimpleKeyedTunnel:push()
                   eth_hdr.vlan.tpid = o_ethertype_8021q
                   eth_hdr.vlan.tag = decap.vlan
                   ffi.copy(pkt.data + eth_vlan_header_size - 2, pkt.data + ipv6_header_size + 12, 
-                     pkt.length - ipv6_header_size)
+                  pkt.length - ipv6_header_size)
                   pkt.length = pkt.length - ipv6_header_size + eth_vlan_header_size
+                  counter.add(trsentPacket)
+                  counter.add(trsentByte, pkt.length)
                   if single_stick then
                      transmit(ipv6_out, pkt)
                   else
                      transmit(trunk_out, pkt)
                   end
                else
-                  print("cookie doesn't match")
-                  packet.free(pkt)  -- TODO verify cookies
+                  -- print("cookie doesn't match")
+                  counter.add(v6droppedPacket)
+                  counter.add(v6droppedByte, pkt.length)
+                  packet.free(pkt)
                end
-                   
+
             else
-               print(string.format("no match for IPv6 source %s found in decap table", ipv6:ntop(ipv6_hdr.src_ip)))
-               packet.free(pkt)  -- TODO
+               -- print(string.format("no match for IPv6 source %s found in decap table", ipv6:ntop(ipv6_hdr.src_ip)))
+               packet.free(pkt)
             end
          else
+            counter.add(trbridgedPacket)
+            counter.add(trbridgedByte, pkt.length)
             transmit(trunk_out, pkt)
          end
       else
-         if single_stick then
+         if single_stick and ipv6_hdr.ether_type == o_ethertype_8021q then
             encap_packet(self, ipv6_out, pkt)
+         else
+            counter.add(trbridgedPacket)
+            counter.add(trbridgedByte, pkt.length)
+            transmit(trunk_out, pkt)
          end
       end
+
    end
-
-end
-
-
-function selftest ()
-   print("Keyed IPv6 tunnel selftest")
-   local ok = true
-local pcap = require("apps.pcap.pcap")
-local basic_apps = require("apps.basic.basic_apps")
-
-   local input_file = "apps/keyed_ipv6_tunnel/selftest.cap.input"
-   local output_file = "apps/keyed_ipv6_tunnel/selftest.cap.output"
-   local tunnel_config = {
-      local_address = "00::2:1",
-      remote_address = "00::2:1",
-      local_cookie = "12345678",
-      remote_cookie = "12345678",
-      default_gateway_MAC = "a1:b2:c3:d4:e5:f6"
-   } -- should be symmetric for local "loop-back" test
-
-   local c = config.new()
-   config.app(c, "source", pcap.PcapReader, input_file)
-   config.app(c, "tunnel", SimpleKeyedTunnel, tunnel_config)
-   config.app(c, "sink", pcap.PcapWriter, output_file)
-   config.link(c, "source.output -> tunnel.trunk")
-   config.link(c, "tunnel.ipv6 -> tunnel.ipv6")
-   config.link(c, "tunnel.trunk -> sink.input")
-   app.configure(c)
-
-   app.main({duration = 0.25}) -- should be long enough...
-   -- Check results
-   if io.open(input_file):read('*a') ~=
-      io.open(output_file):read('*a')
-   then
-      ok = false
-   end
-
-   local c = config.new()
-   config.app(c, "source", basic_apps.Source)
-   config.app(c, "tunnel", SimpleKeyedTunnel, tunnel_config)
-   config.app(c, "sink", basic_apps.Sink)
-   config.link(c, "source.output -> tunnel.decapsulated")
-   config.link(c, "tunnel.ipv6 -> tunnel.ipv6")
-   config.link(c, "tunnel.decapsulated -> sink.input")
-   app.configure(c)
-
-   print("run simple one second benchmark ...")
-   app.main({duration = 1})
-
-   if not ok then
-      print("selftest failed")
-      os.exit(1)
-   end
-   print("selftest passed")
-
 end
