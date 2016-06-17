@@ -143,6 +143,7 @@ v6droppedPacket  = counter.open("l2tpv3_v6/droppedPacket")
 v6droppedByte    = counter.open("l2tpv3_v6/droppedByte")
 v6bridgedPacket  = counter.open("l2tpv3_v6/bridgedPacket")
 v6bridgedByte    = counter.open("l2tpv3_v6/bridgedByte")
+v6invalidCookie  = counter.open("l2tpv3_v6/invalidCookie")
 
 NhsentPacket    = counter.open("l2tpv3_nh/sentPacket")
 NhsentByte      = counter.open("l2tpv3_nh/sentByte")
@@ -157,6 +158,7 @@ trdroppedPacket  = counter.open("l2tpv3_trunk/droppedPacket")
 trdroppedByte    = counter.open("l2tpv3_trunk/droppedByte")
 trbridgedPacket  = counter.open("l2tpv3_trunk/bridgedPacket")
 trbridgedByte    = counter.open("l2tpv3_trunk/bridgedByte")
+trinvalidCookie  = counter.open("l2tpv3_trunk/invalidCookie")
 
 local function encap_packet (self, link, pkt)
 
@@ -250,7 +252,9 @@ function SimpleKeyedTunnel:new (arg)
 
     local vlan = C.htons(conf.vlan)
     assert (vlan, string.format("vlan id missing for tunnel with IPv6 %s", conf.ipv6))
+    assert (string.len(conf.lc) == 8, string.format("Local cookie must be 8 bytes: '%s'", conf.lc))
     local lc = ffi.cast(uint64_ptr_t, lib.hexundump(conf.lc, 8))
+    assert (string.len(conf.rc) == 8, string.format("Remote cookie must be 8 bytes: '%s'", conf.rc))
     local rc = ffi.cast(uint64_ptr_t, lib.hexundump(conf.rc, 8))
     encap_table[conf.vlan] = { ipv6 = ipv6_n, lc = lc[0], rc = rc[0], 
       cache_refresh_time = 0 }
@@ -363,6 +367,7 @@ function SimpleKeyedTunnel:push()
                   end
                else
                   -- print("cookie doesn't match")
+                  counter.add(v6invalidCookie)
                   counter.add(v6droppedPacket)
                   counter.add(v6droppedByte, pkt.length)
                   packet.free(pkt)

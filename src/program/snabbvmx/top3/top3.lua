@@ -89,7 +89,7 @@ function open_counters (tree)
       else
         for _, name
           in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket",
-          "bridgedPacket", "bridgedByte"}) do
+          "bridgedPacket", "bridgedByte", "invalidCookie"}) do
           counters.l2tpv3[l2tpv3spec][name] =
           counter.open(tree .."/" .. l2tpv3spec .. "/" .. name, 'readonly')
         end
@@ -113,7 +113,7 @@ function get_stats (counters)
         end
       else
         for _, name
-          in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket", "bridgedPacket", "bridgedByte" }) do
+          in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket", "bridgedPacket", "bridgedByte" , "invalidCookie" }) do
           new_stats.l2tpv3[l2tpv3spec][name] = counter.read(l2tpv3[name])
         end
       end
@@ -163,7 +163,7 @@ function print_l2tpv3_metrics (new_stats, last_stats, time_delta)
           end
         else
           for _, name
-            in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket", "bridgedPacket", "bridgedByte" }) do
+            in ipairs({"rcvdPacket", "sentPacket", "rcvdByte", "sentByte", "droppedPacket", "bridgedPacket", "bridgedByte", "invalidCookie" }) do
             local delta = tonumber(new_stats.l2tpv3[l2tpv3spec][name] - last_stats.l2tpv3[l2tpv3spec][name])
             print_row(metrics_row, {l2tpv3spec .. " " .. name,
             int_s(new_stats.l2tpv3[l2tpv3spec][name]), int_s(delta)})
