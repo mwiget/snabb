@@ -29,6 +29,8 @@ num_descriptors = 512
 --num_descriptors = 32
 --
 ifInDiscards = counter.open("nic/ifInDiscards")
+-- counter.set(ifInDiscards, 0)
+--print(string.format("ifInDiscards=%d", ifcntr))
 
 -- Defaults for configurable items
 local default = {

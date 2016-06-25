@@ -14,49 +14,71 @@ local ethernet   = require("lib.protocol.ethernet")
 local nh_fwd     = require("apps.nh_fwd.nh_fwd")
 local v4v6       = require("apps.nh_fwd.v4v6").v4v6
 local tap        = require("apps.tap.tap")
+local S          = require("syscall")
+
+-- TODO redundant function dir_exists also in lwaftr.lua
+local function dir_exists(path)
+   local stat = S.stat(path)
+   return stat and stat.isdir
+end
+
+local function nic_exists(pci_addr)
+   local devices="/sys/bus/pci/devices"
+   return dir_exists(("%s/%s"):format(devices, pci_addr)) or
+   dir_exists(("%s/0000:%s"):format(devices, pci_addr))
+end
 
 local function load_phy(c, nic_id, interface)
 
   assert(type(interface) == 'table')
   local vlan = interface.vlan and tonumber(interface.vlan)
-  local device_info = pci.device_info(interface.pci)
+  local chain_input, chain_output
 
-  if not device_info then 
-    fatal(("Couldn't find device info for PCI address '%s'"):format(interface.pci))
-  end
-  print(string.format("%s ether %s", nic_id, interface.mac_address))
-  if vlan then
-    print(string.format("%s vlan %d", nic_id, vlan))
-  end
-  config.app(c, nic_id, require(device_info.driver).driver, 
-  {pciaddr = interface.pci, vmdq = true, vlan = vlan, 
-    qprdc = { 
-      discard_check_timer = interface.discard_check_timer, 
-      discard_wait = interface.discard_wait,
-      discard_threshold = interface.discard_threshold },
-  macaddr = interface.mac_address, mtu = interface.mtu})
-
+  if nic_exists(interface.pci) then 
+     local device_info = pci.device_info(interface.pci)
+     print(string.format("%s ether %s", nic_id, interface.mac_address))
+     if vlan then
+        print(string.format("%s vlan %d", nic_id, vlan))
+     end
+     config.app(c, nic_id, require(device_info.driver).driver, 
+     {pciaddr = interface.pci, vmdq = true, vlan = vlan, 
+     qprdc = { 
+        discard_check_timer = interface.discard_check_timer, 
+        discard_wait = interface.discard_wait,
+        discard_threshold = interface.discard_threshold },
+        macaddr = interface.mac_address, mtu = interface.mtu})
+     chain_input =  nic_id .. ".rx"
+     chain_output = nic_id .. ".tx"
+  else
+     print(string.format("Couldn't find device info for PCI address '%s'", interface.pci))
+     if not interface.mirror_id then
+        fatal("neither PCI nor tap interface given")
+     end
+     print(string.format("using tap interface %s instead", interface.mirror_id))
+     config.app(c, nic_id, tap.Tap, interface.mirror_id)
+     print(string.format("running vMX via tap interface %s", interface.mirror_id))
+     chain_input =  nic_id .. ".input"
+     chain_output = nic_id .. ".output"
+     interface.mirror_id = nil   -- Hack to avoid opening again as mirror port
+     print(string.format("SUCCESS %s", chain_input))
+   end
+   return chain_input, chain_output
 end
 
-function lwaftr_app(c, conf, lwconf, sock_path, vmxtap)
+function lwaftr_app(c, conf, lwconf, sock_path)
 
   assert(type(conf) == 'table')
   assert(type(lwconf) == 'table')
-
-  print (string.format("vmxtap is set to %s (in lwaftr_app)", vmxtap))
 
   if lwconf.binding_table then
     conf.preloaded_binding_table = bt.load(lwconf.binding_table)
   end
 
-  local phy_id = "nic_" .. conf.interface.id
-  local mirror_id = conf.interface.mirror_id
   local virt_id = "vmx_" .. conf.interface.id
+  local phy_id = "nic_" .. conf.interface.id
 
-  load_phy(c, phy_id, conf.interface)
+  chain_input, chain_output = load_phy(c, phy_id, conf.interface)
 
-  local chain_input =  phy_id .. ".rx"
-  local chain_output = phy_id .. ".tx"
   local v4_input, v4_output, v6_input, v6_output
 
   if lwconf.hairpinning == true then
@@ -68,6 +90,7 @@ function lwaftr_app(c, conf, lwconf, sock_path, vmxtap)
   if conf.ipv4_interface or conf.ipv6_interface then
 
     local mirror = false
+    local mirror_id = conf.interface.mirror_id
     if mirror_id then
       mirror = true
       config.app(c, "Mirror", tap.Tap, mirror_id)
@@ -178,17 +201,10 @@ function lwaftr_app(c, conf, lwconf, sock_path, vmxtap)
     config.link(c, virt_id .. ".tx -> " .. chain_input)
     config.link(c, chain_output .. " -> " .. virt_id  .. ".rx")
   else
-    if vmxtap then
-      config.app(c, virt_id, tap.Tap, vmxtap)
-      config.link(c, virt_id .. ".output -> " .. chain_input)
-      config.link(c, chain_output .. " -> " .. virt_id  .. ".input")
-      print(string.format("running vMX via tap interface %s", vmxtap))
-    else
-      config.app(c, "DummyVhost", basic_apps.Sink)
-      config.link(c, "DummyVhost" .. ".tx -> " .. chain_input)
-      config.link(c, chain_output .. " -> " .. "DummyVhost"  .. ".rx")
-      print("running without vMX (no vHostUser sock_path set)")
-    end
+    config.app(c, "DummyVhost", basic_apps.Sink)
+    config.link(c, "DummyVhost" .. ".tx -> " .. chain_input)
+    config.link(c, chain_output .. " -> " .. "DummyVhost"  .. ".rx")
+    print("running without vMX (no vHostUser sock_path set)")
   end
 
 end

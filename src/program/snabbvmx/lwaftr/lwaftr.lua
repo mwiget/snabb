@@ -10,10 +10,10 @@ local function show_usage(exit_code)
    if exit_code then main.exit(exit_code) end
 end
 
-local function fatal(msg)
-   print(msg)
-   main.exit(1)
-end
+-- local function fatal(msg)
+--    print(msg)
+--    main.exit(1)
+-- end
 
 local function file_exists(path)
    local stat = S.stat(path)
@@ -25,15 +25,9 @@ local function dir_exists(path)
   return stat and stat.isdir
 end
 
-local function nic_exists(pci_addr)
-  local devices="/sys/bus/pci/devices"
-  return dir_exists(("%s/%s"):format(devices, pci_addr)) or
-  dir_exists(("%s/0000:%s"):format(devices, pci_addr))
-end
-
 function parse_args(args)
    if #args == 0 then show_usage(1) end
-   local conf_file, sock_path, mac, id, pci, vmxtap
+   local conf_file, sock_path, mac, id, pci
    local opts = { verbosity = 0 }
    local handlers = {}
    function handlers.v () opts.verbosity = opts.verbosity + 1 end
@@ -73,23 +67,16 @@ function parse_args(args)
          fatal("Argument '--sock' was not set")
       end
    end
-   function handlers.t(arg)
-      vmxtap = arg
-      if not arg then
-         fatal("Argument '--tap' was not set")
-      end
-   end
    function handlers.h() show_usage(0) end
-   lib.dogetopt(args, handlers, "c:s:t:i:p:m:vD:h",
-      { ["conf"] = "c", ["sock"] = "s", ["tap"] = "t",
+   lib.dogetopt(args, handlers, "c:s:i:p:m:vD:h",
+      { ["conf"] = "c", ["sock"] = "s",
         ["id"] = "i", ["pci"] = "p", ["mac"] = "m",
         verbose = "v", duration = "D", help = "h" })
-   return opts, conf_file, id, pci, mac, sock_path, vmxtap
+   return opts, conf_file, id, pci, mac, sock_path
 end
 
 function run(args)
-   local opts, conf_file, id, pci, mac, sock_path, vmxtap = parse_args(args)
-
+   local opts, conf_file, id, pci, mac, sock_path = parse_args(args)
 
    local conf = {}
    local lwconf = {}
@@ -111,7 +98,8 @@ function run(args)
      lwconf.ipv4_mtu = lwconf.ipv4_mtu or 1460
    else
      ring_buffer_size = 1024
-     print(string.format("interface %s set to passhtru mode", id))
+     print(string.format("interface %s set to passthru mode", id))
+     conf.settings = {}
    end
 
    local c = config.new()
@@ -155,8 +143,7 @@ function run(args)
      conf.interface.mirror_id = id
    end
 
-   print (string.format("vmxtap is set to %s", vmxtap))
-   setup.lwaftr_app(c, conf, lwconf, sock_path, vmxtap )
+   setup.lwaftr_app(c, conf, lwconf, sock_path)
 
    engine.configure(c)
 
