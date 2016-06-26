@@ -294,7 +294,7 @@ end
 -- ICMPv4 type 3 code 1, as per RFC 7596.
 -- The target IPv4 address + port is not in the table.
 local function drop_ipv4_packet_to_unreachable_host(lwstate, pkt, to_ip)
-   if lwstate.policy_icmpv4_outgoing == lwconf.policies['DROP'] then
+   if lwstate.policy_icmpv4_outgoing == lwconf.policies['DENY'] then
       -- ICMP error messages off by policy; silently drop.
       return drop(pkt)
    end
@@ -320,7 +320,7 @@ end
 -- ICMPv6 type 1 code 5, as per RFC 7596.
 -- The source (ipv6, ipv4, port) tuple is not in the table.
 local function drop_ipv6_packet_from_bad_softwire(lwstate, pkt)
-   if lwstate.policy_icmpv6_outgoing == lwconf.policies['DROP'] then
+   if lwstate.policy_icmpv6_outgoing == lwconf.policies['DENY'] then
       -- ICMP error messages off by policy; silently drop.
       counter.add(v6droppedPacket)
       counter.add(v6droppedByte, pkt.length)
@@ -374,7 +374,7 @@ local function encapsulate_and_transmit(lwstate, pkt, ipv6_dst, ipv6_src)
    -- Do not encapsulate packets that now have a ttl of zero or wrapped around
    local ttl = decrement_ttl(pkt)
    if ttl == 0 then
-      if lwstate.policy_icmpv4_outgoing == lwconf.policies['DROP'] then
+      if lwstate.policy_icmpv4_outgoing == lwconf.policies['DENY'] then
          return drop(pkt)
       end
       local ipv4_header = get_ethernet_payload(pkt)
@@ -508,7 +508,7 @@ local function from_inet(lwstate, pkt)
    counter.add(v4rcvdPacket)
    counter.add(v4rcvdByte, pkt.length)
    if get_ipv4_proto(ipv4_header) == proto_icmp then
-      if lwstate.policy_icmpv4_incoming == lwconf.policies['DROP'] then
+      if lwstate.policy_icmpv4_incoming == lwconf.policies['DENY'] then
          counter.add(v4droppedPacket)
          counter.add(v4droppedByte, pkt.length)
          return drop(pkt)
@@ -626,7 +626,7 @@ local function from_b4(lwstate, pkt)
 
    if proto ~= proto_ipv4 then 
       if proto == proto_icmpv6 then
-         if lwstate.policy_icmpv6_incoming == lwconf.policies['DROP'] then
+         if lwstate.policy_icmpv6_incoming == lwconf.policies['DENY'] then
             counter.add(v6droppedPacket)
             counter.add(v6droppedByte, pkt.length)
             return drop(pkt)
