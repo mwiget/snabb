@@ -208,7 +208,7 @@ local function encap_packet (self, link, pkt)
 
       if current_time > encap.cache_refresh_time + cache_refresh_interval then
          self.encap_table[vlan].cache_refresh_time = current_time
-         print(string.format("nh refresh trigger for vlan %d", vlan))
+         -- print(string.format("nh refresh trigger for vlan %d", vlan))
          send_ipv6_cache_trigger(self.output.trunk, mac_address, packet.clone(pkt))
       end
       local ipv6_key = ffi.string(ipv6_vlan_hdr.dst_ip, 16)
@@ -219,9 +219,8 @@ local function encap_packet (self, link, pkt)
          counter.add(v6sentPacket)
          counter.add(v6sentByte, pkt.length)
          transmit(link, pkt)
-         print(string.format("%s: packet to ipv6 %s sent for vlan %d",id , ipv6:ntop(ipv6_vlan_hdr.dst_ip), vlan))
       else
-         print(string.format("%s: no nh for ipv6 %s",id , ipv6:ntop(ipv6_vlan_hdr.dst_ip)))
+         -- print(string.format("%s: no nh for ipv6 %s",id , ipv6:ntop(ipv6_vlan_hdr.dst_ip)))
          counter.add(v6droppedPacket)
          counter.add(v6droppedByte, pkt.length)
          packet.free(pkt)  -- TODO verify cookies
