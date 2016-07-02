@@ -432,10 +432,16 @@ for DEV in $@; do # ============= loop thru interfaces start
    echo "$macaddr" > /tmp/mac_$INT
 
   if [ "tap" == "$PCI" ]; then
+     if [ -z "$(lsmod|grep 8021q)" ]; then
+        echo "ERROR: please load kernel module 8021q on this host"
+        exit 1
+     fi
      echo "Using tap interface to simulate xe${INTNR}"
      $(create_tap_if xe$INTNR)
+     ip link add link xe$INTNR name xe$INTNR.100 type vlan id 100
      # assign a static IPv6 address for local testing
-     ip -6 addr add fc0${INTNR}::1/64 dev xe$INTNR
+     ip -6 addr add fc0${INTNR}::1/64 dev xe$INTNR.100
+     ifconfig xe$INTNR.100 up
      # blackhole all IPv6 traffic. Its just for local testing
      if [ 0 == $INTNR ]; then
         ip route add to blackhole :: dev lo

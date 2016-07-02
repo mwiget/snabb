@@ -1,9 +1,18 @@
 ## Last commit: 2016-03-02 11:06:07 UTC by mwiget
+#
+# vlan 100 is used for L2TPv3 tunnel traffic, so packets with vlan 100 from
+# the vMX are passed transparently thru to the wire.
+# vlan 100 and 200 aren't assigned to a tunnel, so they transit between
+# wire and vMX virtual interface 0/0/x.
+# Any other vlan tagged traffic is encapsulated into a L2TPv3 tunnel and
+# sent as tagged traffic on vlan 100 to the wire.
+#
 version 15.1F4.15;
 groups {
    snabbvmx-l2tpv3-xe0 {
       apply-macro settings {
          single_stick;
+         vlan 100;
       }
       apply-macro tunnels_fc00::100 {
          fc00:1::1 1,00000000,00000000;
@@ -105,7 +114,6 @@ groups {
          fc00:1::97 97,00000000,00000000;
          fc00:1::98 98,00000000,00000000;
          fc00:1::99 99,00000000,00000000;
-         fc00:1::100 100,00000000,00000000;
          fc00:1::101 101,00000000,00000000;
          fc00:1::102 102,00000000,00000000;
          fc00:1::103 103,00000000,00000000;
@@ -205,7 +213,6 @@ groups {
          fc00:1::197 197,00000000,00000000;
          fc00:1::198 198,00000000,00000000;
          fc00:1::199 199,00000000,00000000;
-         fc00:1::200 200,00000000,00000000;
          fc00:1::201 201,00000000,00000000;
          fc00:1::202 202,00000000,00000000;
          fc00:1::203 203,00000000,00000000;
@@ -4103,17 +4110,26 @@ groups {
       }
    }
    snabbvmx-l2tpv3-xe1 {
+      apply-macro settings {
+         vlan 100;
+      }
       apply-macro tunnels_fc01::101 {
          fc02::102 1234,deadface,12345678;
          fc03::103 103,0103F103,845af001;
       }
    }
    snabbvmx-l2tpv3-xe2 {
+      apply-macro settings {
+         vlan 100;
+      }
       apply-macro tunnels_fc02::102 {
          fc01::101 4001,12345678,deadface;
       }
    }
    snabbvmx-l2tpv3-xe3 {
+      apply-macro settings {
+         vlan 100;
+      }
       apply-macro tunnels_fc03::103 {
          fc01::101 888,845af001,0103F103;
       }
@@ -4177,11 +4193,10 @@ system {
 interfaces {
     ge-0/0/0 {
         flexible-vlan-tagging;
-        native-vlan-id 0;
         mtu 9500;
-        unit 0 {
+        unit 100 {
             description xe0;
-            vlan-id 0;
+            vlan-id 100;
             family inet6 {
                 address fc00::100/64;
             }
@@ -4189,11 +4204,10 @@ interfaces {
     }
     ge-0/0/1 {
         flexible-vlan-tagging;
-        native-vlan-id 0;
         mtu 9500;
-        unit 0 {
+        unit 100 {
             description xe1;
-            vlan-id 0;
+            vlan-id 100;
             family inet6 {
                 address fc01::101/64;
             }
@@ -4215,11 +4229,10 @@ interfaces {
     }
     ge-0/0/2 {
         flexible-vlan-tagging;
-        native-vlan-id 0;
         mtu 9500;
-        unit 0 {
+        unit 100 {
             description xe2;
-            vlan-id 0;
+            vlan-id 100;
             family inet6 {
                 address fc02::102/64;
             }
@@ -4234,11 +4247,10 @@ interfaces {
     }
     ge-0/0/3 {
         flexible-vlan-tagging;
-        native-vlan-id 0;
         mtu 9500;
-        unit 0 {
+        unit 100 {
             description xe3;
-            vlan-id 0;
+            vlan-id 100;
             family inet6 {
                 address fc03::103/64;
             }
@@ -4275,7 +4287,7 @@ protocols {
 routing-instances {
    R1 {
       instance-type virtual-router;
-      interface ge-0/0/1.0;
+      interface ge-0/0/1.100;
       routing-options {
          rib R1.inet6.0 {
             static {
@@ -4286,7 +4298,7 @@ routing-instances {
    }
    R2 {
       instance-type virtual-router;
-      interface ge-0/0/2.0;
+      interface ge-0/0/2.100;
       routing-options {
          rib R2.inet6.0 {
             static {
@@ -4297,7 +4309,7 @@ routing-instances {
    }
    R3 {
       instance-type virtual-router;
-      interface ge-0/0/3.0;
+      interface ge-0/0/3.100;
       routing-options {
          rib R3.inet6.0 {
             static {

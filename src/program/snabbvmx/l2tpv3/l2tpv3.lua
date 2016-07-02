@@ -174,12 +174,17 @@ function run (args)
       input = "write.input"
    end
 
+   if not conf.vlan then
+         print("vlan required for L2TPv3 encapsulation")
+         main.exit(1)
+   end
+
    if conf.tunnels and type(conf.tunnels) == "table" then
       if not conf.ipv6_address then
          print("ipv6_address (local tunnel endpoint) missing from config")
          main.exit(1)
       end
-      config.app(c, "l2tpv3", l2tpv3, { id = id, tunnels = conf.tunnels, ipv6_address = conf.ipv6_address, mac_address = mac_address, single_stick = conf.single_stick })
+      config.app(c, "l2tpv3", l2tpv3, { id = id, tunnels = conf.tunnels, ipv6_address = conf.ipv6_address, mac_address = mac_address, single_stick = conf.single_stick, vlan = conf.vlan })
       config.link(c, output .. " -> l2tpv3.ipv6")
       config.link(c, "l2tpv3.ipv6 -> " .. input)
       input, output = "l2tpv3.trunk", "l2tpv3.trunk"

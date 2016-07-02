@@ -13,6 +13,9 @@ Example config file:
 
 # cat snabbvmx-l2tpv3-xe0.cfg
 return {
+   single_stick = true,
+   vlan = 100,
+   ipv6_address = "fc00::100",
    tunnels = {
       { ipv6=fc00:1::1, vlan=1, lc=00000000, rc=00000000 },
       { ipv6=fc00:1::2, vlan=2, lc=00000000, rc=00000000 },

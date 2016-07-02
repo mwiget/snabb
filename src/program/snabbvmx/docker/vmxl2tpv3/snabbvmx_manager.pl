@@ -44,6 +44,8 @@ sub process_new_config {
       print CFG "return {\n";
     } elsif (/single_stick/) {
        print CFG "   single_stick = true,\n";
+    } elsif (/vlan\s+(\d+)/) {
+       print CFG "   vlan = $1,\n";
     } elsif (/apply-macro tunnels_([\w:]+)/) {
        print CFG "   ipv6_address = \"$1\",\n";
        print CFG "   tunnels = {\n";

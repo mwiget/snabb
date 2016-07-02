@@ -116,14 +116,16 @@ end
 
 local function send_ipv6_cache_trigger(link, mac_address, pkt)
 
-   local ipv6_hdr = ffi.cast(ipv6_header_ptr_type, pkt.data)
+   local ipv6_vlan_hdr = ffi.cast(ipv6_vlan_header_ptr_type, pkt.data)
    -- In order for loopback selftests to work, use the same source and destination
    -- MAC address in the cache refresh packet. If on return these MAC's are unchanged
    -- then we just learn the same MAC also for the remote tunnel endpoint ;-)
-   ffi.copy(ipv6_hdr.ether_dhost, mac_address, 6)
-   ffi.copy(ipv6_hdr.src_ip, n_cache_src_ipv6, 16)
+   ffi.copy(ipv6_vlan_hdr.ether_dhost, mac_address, 6)
+   ffi.copy(ipv6_vlan_hdr.src_ip, n_cache_src_ipv6, 16)
    counter.add(NhsentPacket)
    counter.add(NhsentByte, pkt.length)
+--   hex_dump(pkt.data, pkt.length)
+
    transmit(link, pkt)
 
 end
@@ -165,6 +167,7 @@ local function encap_packet (self, link, pkt)
    local id = self.id
    local mac_address = self.mac_address
    local ipv6_address = self.ipv6_address
+   local l2tpv3_vlan = C.htons(self.l2tpv3_vlan)
    local cache_refresh_interval = self.cache_refresh_interval
    local encap_table = self.encap_table
    local current_time = tonumber(app.now())
@@ -173,44 +176,52 @@ local function encap_packet (self, link, pkt)
    -- as long as the vlan tag is in the tunnel table
    local ethernet_hdr = ffi.cast(eth_vlan_header_ptr_type, pkt.data)
 
-
    local vlan = bit.band(C.ntohs(ethernet_hdr.vlan.tag), 4095)
    local encap = encap_table[vlan]
 
    counter.add(trrcvdPacket)
    counter.add(trrcvdByte, pkt.length)
 
-   if encap and vlan > 0 then
-      local shift_right = ipv6_header_size - 4
+   if encap then
+--      local shift_right = ipv6_header_size - 4
+      local shift_right = ipv6_header_size
       packet.shiftright(pkt, shift_right)
       local orig_eth_hdr = ffi.cast(eth_vlan_header_ptr_type, pkt.data + shift_right)
-      local new_eth_hdr  = ffi.cast(eth_vlan_header_ptr_type, pkt.data + ipv6_header_size)
+      local new_eth_hdr  = ffi.cast(eth_vlan_header_ptr_type, pkt.data + ipv6_vlan_header_size)
       ffi.copy(new_eth_hdr.ether_dhost, orig_eth_hdr.ether_dhost, 12)
-      local ipv6_hdr = ffi.cast(ipv6_header_ptr_type, pkt.data)
-      ipv6_hdr.ether_type = o_ethertype_ipv6
-      ffi.copy(ipv6_hdr.ether_shost, mac_address, 6)
-      ipv6_hdr.next_header = L2TPV3_NEXT_HEADER
-      ipv6_hdr.src_ip = ipv6_address
-      ipv6_hdr.dst_ip = encap.ipv6
-      ipv6_hdr.session_id = 0xffffffff
-      ipv6_hdr.cookie = encap.lc
-      lib.bitfield(32, ipv6_hdr, 'v_tc_fl', 0, 4, 6) -- IPv6 Version
-      lib.bitfield(32, ipv6_hdr, 'v_tc_fl', 4, 8, 1) -- Traffic class
-      ipv6_hdr.hop_limit = 255
-      ipv6_hdr.payload_length = C.htons(pkt.length - ipv6_header_size + 12)
+      local ipv6_vlan_hdr = ffi.cast(ipv6_vlan_header_ptr_type, pkt.data)
+      ipv6_vlan_hdr.vlan.tag = l2tpv3_vlan
+      ipv6_vlan_hdr.ether_type = o_ethertype_ipv6
+      ffi.copy(ipv6_vlan_hdr.ether_shost, mac_address, 6)
+      ipv6_vlan_hdr.next_header = L2TPV3_NEXT_HEADER
+      ipv6_vlan_hdr.src_ip = ipv6_address
+      ipv6_vlan_hdr.dst_ip = encap.ipv6
+      ipv6_vlan_hdr.session_id = 0xffffffff
+      ipv6_vlan_hdr.cookie = encap.lc
+      lib.bitfield(32, ipv6_vlan_hdr, 'v_tc_fl', 0, 4, 6) -- IPv6 Version
+      lib.bitfield(32, ipv6_vlan_hdr, 'v_tc_fl', 4, 8, 1) -- Traffic class
+      ipv6_vlan_hdr.hop_limit = 255
+      ipv6_vlan_hdr.payload_length = C.htons(pkt.length - ipv6_vlan_header_size + 12)
+      
+--      print("sending clone to ipv6")
+--      transmit(link, packet.clone(pkt))
+
       if current_time > encap.cache_refresh_time + cache_refresh_interval then
          self.encap_table[vlan].cache_refresh_time = current_time
-         -- print(string.format("nh refresh trigger for vlan %d", vlan))
+         print(string.format("nh refresh trigger for vlan %d", vlan))
          send_ipv6_cache_trigger(self.output.trunk, mac_address, packet.clone(pkt))
       end
-      local ipv6_key = ffi.string(ipv6_hdr.dst_ip, 16)
+      local ipv6_key = ffi.string(ipv6_vlan_hdr.dst_ip, 16)
       local nh_cache =  self.nh_cache_table[ipv6_key] 
       if nh_cache then
-         ffi.copy(ipv6_hdr.ether_dhost, nh_cache, 6)
+
+         ffi.copy(ipv6_vlan_hdr.ether_dhost, nh_cache, 6)
          counter.add(v6sentPacket)
          counter.add(v6sentByte, pkt.length)
          transmit(link, pkt)
+         print(string.format("%s: packet to ipv6 %s sent for vlan %d",id , ipv6:ntop(ipv6_vlan_hdr.dst_ip), vlan))
       else
+         print(string.format("%s: no nh for ipv6 %s",id , ipv6:ntop(ipv6_vlan_hdr.dst_ip)))
          counter.add(v6droppedPacket)
          counter.add(v6droppedByte, pkt.length)
          packet.free(pkt)  -- TODO verify cookies
@@ -234,7 +245,14 @@ function SimpleKeyedTunnel:new (arg)
   local ipv6_address = ipv6:pton(cfg.ipv6_address)
   print(string.format("local IPv6 tunnel endpoint: %s", ipv6:ntop(ipv6_address)))
 
+  local l2tpv3_vlan = cfg.vlan
+  if l2tpv3_vlan then
+     print(string.format("L2TPv3 traffic tagged with vlan %d", l2tpv3_vlan))
+  else
+     l2tpv3_vlan = 0
+  end
   local single_stick = cfg.single_stick
+
   if single_stick then
      print("running in single_stick mode")
   end
@@ -267,6 +285,7 @@ function SimpleKeyedTunnel:new (arg)
      id = cfg.id,
     mac_address = mac_address,
     ipv6_address = ipv6_address,
+    l2tpv3_vlan = l2tpv3_vlan,
     cache_refresh_interval = 1,
     encap_table = encap_table,
     decap_table = decap_table,
@@ -286,22 +305,27 @@ function SimpleKeyedTunnel:push()
    local id = self.id
    local mac_address = self.mac_address
    local ipv6_address = self.ipv6_address
+   local l2tpv3_vlan = self.l2tpv3_vlan
    local cache_refresh_interval = self.cache_refresh_interval
    local encap_table = self.encap_table
    local decap_table = self.decap_table
    local single_stick = self.single_stick
 
    -- encapsulation path with tagged ethernet packets from virtio 
+   -- packets with vlan matching the vlan used to transport L2TPv3 packets
+   -- are bridged thru (so ICMP, NDP etc work). 
+   -- Same for vlans not found in the tunnel table (done in encap_packet())
+
    for _=1, link.nreadable(trunk_in) do
       local pkt = receive(trunk_in)
       local ethernet_hdr = ffi.cast(eth_vlan_header_ptr_type, pkt.data)
       local vlan = bit.band(C.ntohs(ethernet_hdr.vlan.tag), 4095)
 
-      if ethernet_hdr.vlan.tpid == o_ethertype_8021q and vlan > 0 then
+      if ethernet_hdr.vlan.tpid == o_ethertype_8021q and vlan ~= l2tpv3_vlan then
          encap_packet(self, ipv6_out, pkt)
       else
-         -- L2TPv3 packets (untagged or with vlan id 0) have been sent by
-         -- this app to the virtio interface for next hop resolution.
+         -- L2TPv3 packets (untagged or with vlan matching l2tpv3_vlan) have been 
+         -- sent by this app to the virtio interface for next hop resolution.
          -- Learn and drop.
          local ipv6_hdr = ffi.cast(ipv6_header_ptr_type, pkt.data)
          if ethernet_hdr.vlan.tpid == o_ethertype_8021q then
@@ -316,7 +340,7 @@ function SimpleKeyedTunnel:push()
                ffi.copy(mac, ipv6_hdr.ether_dhost, 6)
                self.nh_cache_table[ipv6_key] = mac
 
-               -- print(string.format("nh cache for %s at %s", ipv6:ntop(ipv6_hdr.dst_ip), ethernet:ntop(mac)))
+               -- print(string.format("%s:nh cache for %s at %s", id, ipv6:ntop(ipv6_hdr.dst_ip), ethernet:ntop(mac)))
                counter.add(NhrcvdPacket)
                counter.add(NhrcvdByte, pkt.length)
                packet.free(pkt)
@@ -337,53 +361,53 @@ function SimpleKeyedTunnel:push()
    -- decapsulation path
    for _=1, link.nreadable(ipv6_in) do
       local pkt = receive(ipv6_in)
-      local ipv6_hdr = ffi.cast(ipv6_header_ptr_type, pkt.data)
-      -- print(string.format("%s decap pkt received. ether_type=%x", id, C.ntohs(ipv6_hdr.ether_type)))
 
-      if ipv6_hdr.ether_type == o_ethertype_ipv6 then
-         if ipv6_hdr.next_header == L2TPV3_NEXT_HEADER then
-            counter.add(v6rcvdPacket)
-            counter.add(v6rcvdByte, pkt.length)
-            local ipv6_key = ffi.string(ipv6_hdr.src_ip, 16)
-            local decap = decap_table[ipv6_key]
-            if decap then
-               if ipv6_hdr.cookie == decap.rc then
-                  local payload_hdr = ffi.cast(eth_vlan_header_ptr_type, pkt.data + ipv6_header_size)
-                  -- copy ethernet header and ether type to the front of the decapped packet
-                  -- yes, this overwrites the IPv6 header we no longer need
-                  local eth_hdr = ffi.cast(eth_vlan_header_ptr_type, pkt.data)
-                  ffi.copy(eth_hdr.ether_dhost, payload_hdr.ether_dhost, 12)
-                  eth_hdr.vlan.tpid = o_ethertype_8021q
-                  eth_hdr.vlan.tag = decap.vlan
-                  ffi.copy(pkt.data + eth_vlan_header_size - 2, pkt.data + ipv6_header_size + 12, 
-                  pkt.length - ipv6_header_size)
-                  pkt.length = pkt.length - ipv6_header_size + eth_vlan_header_size
-                  counter.add(trsentPacket)
-                  counter.add(trsentByte, pkt.length)
-                  if single_stick then
-                     transmit(ipv6_out, pkt)
-                  else
-                     transmit(trunk_out, pkt)
-                  end
+      local ipv6_vlan_hdr = ffi.cast(ipv6_vlan_header_ptr_type, pkt.data)
+      --print(string.format("%s decap pkt received. ether_type=%x", id, C.ntohs(ipv6_vlan_hdr.ether_type)))
+
+      if ipv6_vlan_hdr.ether_type == o_ethertype_ipv6 
+         and ipv6_vlan_hdr.next_header == L2TPV3_NEXT_HEADER then
+         counter.add(v6rcvdPacket)
+         counter.add(v6rcvdByte, pkt.length)
+         local ipv6_key = ffi.string(ipv6_vlan_hdr.src_ip, 16)
+         local decap = decap_table[ipv6_key]
+         -- if no match found, the packet will be bridged
+         if decap then
+            if ipv6_vlan_hdr.cookie == decap.rc then
+               local payload_hdr = ffi.cast(eth_vlan_header_ptr_type, pkt.data + ipv6_vlan_header_size)
+               -- copy ethernet header and ether type to the front of the decapped packet
+               -- yes, this overwrites the IPv6 header we no longer need
+               local eth_hdr = ffi.cast(eth_vlan_header_ptr_type, pkt.data)
+               ffi.copy(eth_hdr.ether_dhost, payload_hdr.ether_dhost, 12)
+               eth_hdr.vlan.tpid = o_ethertype_8021q
+               eth_hdr.vlan.tag = decap.vlan
+--               print(string.format("%s: offset=%d", id, ))
+               ffi.copy(pkt.data + eth_vlan_header_size - 2, pkt.data + ipv6_vlan_header_size + 12, 
+               pkt.length - ipv6_vlan_header_size)
+               pkt.length = pkt.length - ipv6_vlan_header_size + eth_vlan_header_size
+               counter.add(trsentPacket)
+               counter.add(trsentByte, pkt.length)
+               if single_stick then
+                  transmit(ipv6_out, pkt)
                else
-                  -- print("cookie doesn't match")
-                  counter.add(v6invalidCookie)
-                  counter.add(v6droppedPacket)
-                  counter.add(v6droppedByte, pkt.length)
-                  packet.free(pkt)
+                  transmit(trunk_out, pkt)
                end
-
+               pkt = nil
             else
-               -- print(string.format("no match for IPv6 source %s found in decap table", ipv6:ntop(ipv6_hdr.src_ip)))
+               -- print("cookie doesn't match")
+               counter.add(v6invalidCookie)
+               counter.add(v6droppedPacket)
+               counter.add(v6droppedByte, pkt.length)
                packet.free(pkt)
+               pkt = nil
             end
-         else
-            counter.add(trbridgedPacket)
-            counter.add(trbridgedByte, pkt.length)
-            transmit(trunk_out, pkt)
          end
       else
-         if single_stick and ipv6_hdr.ether_type == o_ethertype_8021q then
+      end
+
+      if pkt then
+         local vlan = bit.band(C.ntohs(ipv6_vlan_hdr.vlan.tag), 4095)
+         if single_stick and vlan ~= l2tpv3_vlan then
             encap_packet(self, ipv6_out, pkt)
          else
             counter.add(trbridgedPacket)
