@@ -4195,10 +4195,17 @@ interfaces {
         flexible-vlan-tagging;
         mtu 9500;
         unit 100 {
-            description xe0;
+            description xe0.100;
             vlan-id 100;
             family inet6 {
                 address fc00::100/64;
+            }
+        }
+        unit 200 {
+            description xe0.200;
+            vlan-id 200;
+            family inet6 {
+                address fc10::100/64;
             }
         }
     }
@@ -4206,10 +4213,17 @@ interfaces {
         flexible-vlan-tagging;
         mtu 9500;
         unit 100 {
-            description xe1;
+            description xe1.100;
             vlan-id 100;
             family inet6 {
                 address fc01::101/64;
+            }
+        }
+        unit 200 {
+            description xe1.200;
+            vlan-id 200;
+            family inet6 {
+                address fc11::100/64;
             }
         }
         unit 1234 {
@@ -4231,10 +4245,17 @@ interfaces {
         flexible-vlan-tagging;
         mtu 9500;
         unit 100 {
-            description xe2;
+            description xe2.100;
             vlan-id 100;
             family inet6 {
                 address fc02::102/64;
+            }
+        }
+        unit 200 {
+            description xe2.200;
+            vlan-id 200;
+            family inet6 {
+                address fc12::100/64;
             }
         }
         unit 4001 {
@@ -4249,10 +4270,17 @@ interfaces {
         flexible-vlan-tagging;
         mtu 9500;
         unit 100 {
-            description xe3;
+            description xe3.100;
             vlan-id 100;
             family inet6 {
                 address fc03::103/64;
+            }
+        }
+        unit 200 {
+            description xe3.200;
+            vlan-id 200;
+            family inet6 {
+                address fc13::100/64;
             }
         }
         unit 888 {

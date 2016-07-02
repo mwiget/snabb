@@ -439,9 +439,12 @@ for DEV in $@; do # ============= loop thru interfaces start
      echo "Using tap interface to simulate xe${INTNR}"
      $(create_tap_if xe$INTNR)
      ip link add link xe$INTNR name xe$INTNR.100 type vlan id 100
+     ip link add link xe$INTNR name xe$INTNR.200 type vlan id 200
      # assign a static IPv6 address for local testing
      ip -6 addr add fc0${INTNR}::1/64 dev xe$INTNR.100
+     ip -6 addr add fc1${INTNR}::1/64 dev xe$INTNR.200
      ifconfig xe$INTNR.100 up
+     ifconfig xe$INTNR.200 up
      # blackhole all IPv6 traffic. Its just for local testing
      if [ 0 == $INTNR ]; then
         ip route add to blackhole :: dev lo
