@@ -269,9 +269,9 @@ function SimpleKeyedTunnel:new (arg)
 
     local vlan = C.htons(conf.vlan)
     assert (vlan, string.format("vlan id missing for tunnel with IPv6 %s", conf.ipv6))
-    assert (string.len(conf.lc) == 8, string.format("Local cookie must be 8 bytes: '%s'", conf.lc))
+    -- assert (string.len(conf.lc) == 16, string.format("Local cookie must be 8 bytes: '%s'", conf.lc))
     local lc = ffi.cast(uint64_ptr_t, lib.hexundump(conf.lc, 8))
-    assert (string.len(conf.rc) == 8, string.format("Remote cookie must be 8 bytes: '%s'", conf.rc))
+    -- assert (string.len(conf.rc) == 16, string.format("Remote cookie must be 8 bytes: '%s'", conf.rc))
     local rc = ffi.cast(uint64_ptr_t, lib.hexundump(conf.rc, 8))
     encap_table[conf.vlan] = { ipv6 = ipv6_n, lc = lc[0], rc = rc[0], 
       cache_refresh_time = 0 }
