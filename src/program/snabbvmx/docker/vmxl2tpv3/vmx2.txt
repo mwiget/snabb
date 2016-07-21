@@ -1,0 +1,176 @@
+## Last commit: 2016-03-02 11:06:07 UTC by mwiget
+#
+# vlan 100 is used for L2TPv3 tunnel traffic, so packets with vlan 100 from
+# the vMX are passed transparently thru to the wire.
+# Any other vlan tagged traffic is encapsulated into a L2TPv3 tunnel and
+# sent as tagged traffic on vlan 100 to the wire.
+# This config works via a loopback cable between 0/0/0 and 0/0/1 for testing
+#
+version 15.1F4.15;
+groups {
+  snabbvmx-l2tpv3-xe0 {
+    apply-macro settings {
+      vlan 100;
+    }
+    apply-macro tunnels_fc00::100 {
+      fc00::101 1234,deadface,12345678;
+    }
+  }
+  snabbvmx-l2tpv3-xe1 {
+    apply-macro settings {
+      vlan 100;
+    }
+    apply-macro tunnels_fc00::101 {
+      fc00::100 4001,12345678,deadface;
+    }
+  }
+}
+system {
+  host-name vmx2;
+  root-authentication {
+    encrypted-password "$5$Ljb/KVTS$FhDf5hpL9tW7rjufOQG5f5UmTzaHBxqIlPtsHQPqdH0"; ## SECRET-DATA
+  }
+  login {
+    user lab {
+      uid 2002;
+      class super-user;
+      authentication {
+        encrypted-password "$5$eX/WnYKu$dZgdVFEdFT4aw3GdLeSTlubfDzD0GP.XDpQpAogbOpB"; ## SECRET-DATA
+          ssh-dsa "ssh-dss AAAAB3NzaC1kc3MAAACBALQ1gQaOWwm5IdJRW8NkbLEFJS2DDK1YiL02J5RtUy8hWUPb6c41jyEPfu44exHtDASTTRooqIlCuHCpf8D/qvpFJqLa/lY6Gongam4fQdKeQMqTX7kKdSHCOaaEIaxw5WN75YFFSfm76axYkJPK9AlyOXYxAwZyu9Doj1Ir96KpAAAAFQC2PfdISu21YaWGyZz15XmZENTQWwAAAIEAogJ3/OQ6pYnsts/Pzcd0axoF3GQ7tp7cRYU6tPZ6aTPfeQk67tK5EYATpuIADd1J8FSVn8RUJuzyi183ct0LdFss0MkF5unMSdCoaFBTqdeDXzHlc1L/vMssWz/53DaPJspGxYiThQu3wPsmJ1kFh8umNPK8lNY5/zS2xhNfY3IAAACBAJn2X65fa7CcRfmP32rOS0DK1Sby6ACaRJ1dkB1lJYDH+kQnaHRmQx/VCwGf+D3Kqz0tU39Y/TdZrp7xWOxqGmKgqnRnAmcPALsQdg528qoMejZpEvaL551HLsqZmH1ye94iCJfkBgKipZ8oMYP0tEQShebQIQqNGQAwV2ksdOSV lab@sb"; ## SECRET-DATA
+          ssh-rsa "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDCOQFlnk4YiSut6yzVtEY+Q4W+lZmRkZfnku/vbb4Ehf6Og+K5qG18QqrAnUlv2OdWBr+f4Z8YKuZx4hGANdD/L62Tsg06hY/US9zWwE9wo0D8Thg971kgs6Lz2xkWQKZ+Oj0RNRoju5e+NyziQRjPTee8Mgp02fW2MPgVGUZW4ZtB8WkG3FngYH+CPY8DYuLa/7aXtIn+WGsscS+TLR/ygyJylS/OfrP7dGNMKRNMA0xMKhKVW9WrYxz2CurwB5m4S515TlMDTQgDVawTJSXMj7qAUowkDi75IZpBVz9SOebgfVAA/7CpoSX8FZNvQgu49L8pEq9t494pJ2yotVVD mwiget@sb"; ## SECRET-DATA
+      }
+    }
+    user mwiget {
+      uid 2001;
+      class super-user;
+      authentication {
+        encrypted-password "$5$qOveA7UK$Bf0Iq5fc9RhOGs6b/5bAshsLtb13.GOC4mbTqIDqaS4"; ## SECRET-DATA
+          ssh-rsa "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDCOQFlnk4YiSut6yzVtEY+Q4W+lZmRkZfnku/vbb4Ehf6Og+K5qG18QqrAnUlv2OdWBr+f4Z8YKuZx4hGANdD/L62Tsg06hY/US9zWwE9wo0D8Thg971kgs6Lz2xkWQKZ+Oj0RNRoju5e+NyziQRjPTee8Mgp02fW2MPgVGUZW4ZtB8WkG3FngYH+CPY8DYuLa/7aXtIn+WGsscS+TLR/ygyJylS/OfrP7dGNMKRNMA0xMKhKVW9WrYxz2CurwB5m4S515TlMDTQgDVawTJSXMj7qAUowkDi75IZpBVz9SOebgfVAA/7CpoSX8FZNvQgu49L8pEq9t494pJ2yotVVD mwiget@sb"; ## SECRET-DATA
+          ssh-dsa "ssh-dss AAAAB3NzaC1kc3MAAACBAMdlCk1NNT2O+np4uzFWFDHP+zTS8uAC6c0mv2miSgAgJxFyfZpJH+HbOuLALCoyPrQbAPb+yPeXvl7xQwAUd94QW3dsX8B70skaxGQMXJdvEu3iDSnpxdeNMW+Ctl4JDHwNoZ93dCxqUqiF5tIE9ock8r1vEZ4d4Xy/LWe+mneVAAAAFQCZ3YEG7uDAfKRxcIK7v4XJyCknCwAAAIA4l8xAexLrEiheg8w8YYGvTtTV20xDaFObLI0fWFpYM0n6g80xkGoM409/1ne6PPqOydCp6dfNcbqf2vCq2WxffjEetMSE5BNk02JctdafO8wiGVFnQd39I+n70SCU/48s/NX+RqWcRgTlwDzp034ZiclDrmrBGVmz5TAJWXT8BgAAAIBbYv/+kxyNdM0HLiQn6/ShTCqK6gkhumDn3a/SS0nHx3LpdlACX9x49a7VTf4tYqctW6LUkE9ei0cvsHWq2ec6Q00UAypCaTtwUjt7vr7HmwuTKV6XOsLkupnEED5jtRgeEz5fuWPIMH6Xg/GENJ5z7N/6AlaOz3Emu6TQtkdwPw== mwiget@mwiget-mba13"; ## SECRET-DATA
+      }
+    }
+    user snabbvmx {
+      uid 2000;
+      class super-user;
+      authentication {
+        ssh-rsa "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDN2NksvlHTtbQ7pbsUq2yByW38U+WIViDBKA9piGdoGtRImgnur9fAFHTcup2GWBUnN1CW6wzRRJjmZgG/A92bk1xixgqNQx9nC+m/9ePOSKVR6yZ24lF1blw0PuZ7p32LOigi/On4ocF/Q5AX3Sn1tbJbJ/tW2cq4nzOCwIdOiDfsexDZRAwPxqFqo/JKqR2TdaZGX8UbkkvJFLibyKIOxZkX53bhD2fyk5wbsG4H6w5tVkCL1jABj9bWJUJbe8PR2C2gHvDH2oX6qRTAm05I55VV+xW8XaMOWIiGfZ/T9MF2/9/EsmGa4ylJIH8nRhiMRaPl7OUeMdKxHFe/pT0x mwiget@st"; ## SECRET-DATA
+      }
+    }
+  }
+  services {
+    ssh;
+    netconf {
+      ssh;
+    }
+  }
+  syslog {
+    user * {
+      any emergency;
+    }
+    file messages {
+      any notice;
+      authorization info;
+    }
+    file interactive-commands {
+      interactive-commands any;
+    }
+  }
+  ntp {
+    boot-server 172.17.0.1;
+    server 172.17.0.1;
+  }
+}
+interfaces {
+  ge-0/0/0 {
+    flexible-vlan-tagging;
+    mtu 9500;
+    unit 100 {
+      description xe0.100;
+      vlan-id 100;
+      family inet6 {
+        mtu 9000;
+        address fc00::100/64;
+      }
+    }
+    unit 1234 {
+      description xe1-1234;
+      vlan-id 1234;
+      family inet {
+        mtu 9000;
+        address 10.0.0.1/24;
+      }
+    }
+  }
+  ge-0/0/1 {
+    flexible-vlan-tagging;
+    mtu 9500;
+    unit 100 {
+      description xe1.100;
+      vlan-id 100;
+      family inet6 {
+        mtu 9000;
+        address fc00::101/64;
+      }
+    }
+    unit 4001 {
+      description xe2-4001;
+      vlan-id 4001;
+      family inet {
+        mtu 9000;
+        address 10.0.0.2/24;
+      }
+    }
+  }
+  fxp0 {
+    unit 0 {
+      description mgmt;
+      family inet {
+        address 172.17.0.102/24;
+      }
+    }
+  }
+}
+routing-options {
+  rib inet6.0 {
+    static {
+      route ::/0 next-hop fc00::1;
+    }
+  }
+}
+protocols {
+  lldp {
+    interface all;
+  }
+}
+routing-instances {
+  R1 {
+    instance-type virtual-router;
+    interface ge-0/0/0.100;
+    routing-options {
+      rib R1.inet6.0 {
+        static {
+          route ::/0 next-hop fc00::1;
+        }
+      }
+    }
+  }
+  R2 {
+    instance-type virtual-router;
+    interface ge-0/0/1.100;
+    routing-options {
+      rib R2.inet6.0 {
+        static {
+          route ::/0 next-hop fc00::1;
+        }
+      }
+    }
+  }
+  A1 {
+    instance-type virtual-router;
+    interface ge-0/0/0.1234;
+  }
+  B2 {
+    instance-type virtual-router;
+    interface ge-0/0/1.4001;
+  }
+}

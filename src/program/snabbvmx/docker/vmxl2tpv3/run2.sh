@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-NAME="vmx1"
+NAME="vmx2"
 OPTIONS="-P 5 -m 4000"
-CFG="vmx1.txt"
+CFG="vmx2.txt"
 IMG="vmx-15.1F5-S1.5.tgz"
 IDENTITY="snabbvmx.key"
 chmod 400 $IDENTITY
-INTERFACES="tap/6 tap/7 tap/8 tap/9"
+INTERFACES="0000:05:00.0/6 0000:05:00.1/6"
 LICENSE="license-eval.txt"
 #LICENSE="license-unlimited.txt"
 echo "Launching vMX with $INTERFACES and options $OPTIONS ..."
