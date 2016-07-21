@@ -10,10 +10,10 @@ local function show_usage(exit_code)
    if exit_code then main.exit(exit_code) end
 end
 
--- local function fatal(msg)
---    print(msg)
---    main.exit(1)
--- end
+local function fatal(msg)
+   print(msg)
+   main.exit(1)
+end
 
 local function file_exists(path)
    local stat = S.stat(path)

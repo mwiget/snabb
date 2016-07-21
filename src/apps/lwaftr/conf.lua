@@ -6,7 +6,7 @@ local ipv6 = require("lib.protocol.ipv6")
 local Parser = require("apps.lwaftr.conf_parser").Parser
 
 policies = {
-   DENY = 1,
+   DROP = 1,
    ALLOW = 2
 }
 

@@ -294,7 +294,7 @@ end
 -- ICMPv4 type 3 code 1, as per RFC 7596.
 -- The target IPv4 address + port is not in the table.
 local function drop_ipv4_packet_to_unreachable_host(lwstate, pkt, to_ip)
-   if lwstate.policy_icmpv4_outgoing == lwconf.policies['DENY'] then
+   if lwstate.policy_icmpv4_outgoing == lwconf.policies['DROP then
       -- ICMP error messages off by policy; silently drop.
       return drop(pkt)
    end
@@ -320,7 +320,7 @@ end
 -- ICMPv6 type 1 code 5, as per RFC 7596.
 -- The source (ipv6, ipv4, port) tuple is not in the table.
 local function drop_ipv6_packet_from_bad_softwire(lwstate, pkt)
-   if lwstate.policy_icmpv6_outgoing == lwconf.policies['DENY'] then
+   if lwstate.policy_icmpv6_outgoing == lwconf.policies['DROP'] then
       -- ICMP error messages off by policy; silently drop.
       counter.add(v6droppedPacket)
       counter.add(v6droppedByte, pkt.length)
