@@ -294,7 +294,7 @@ end
 -- ICMPv4 type 3 code 1, as per RFC 7596.
 -- The target IPv4 address + port is not in the table.
 local function drop_ipv4_packet_to_unreachable_host(lwstate, pkt, to_ip)
-   if lwstate.policy_icmpv4_outgoing == lwconf.policies['DROP then
+   if lwstate.policy_icmpv4_outgoing == lwconf.policies['DROP'] then
       -- ICMP error messages off by policy; silently drop.
       return drop(pkt)
    end
