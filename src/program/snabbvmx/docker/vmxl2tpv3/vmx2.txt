@@ -83,12 +83,11 @@ system {
 interfaces {
   ge-0/0/0 {
     flexible-vlan-tagging;
-    mtu 9500;
+    mtu 9100;
     unit 100 {
       description xe0.100;
       vlan-id 100;
       family inet6 {
-        mtu 9000;
         address fc00::100/64;
       }
     }
@@ -96,19 +95,17 @@ interfaces {
       description xe1-1234;
       vlan-id 1234;
       family inet {
-        mtu 9000;
         address 10.0.0.1/24;
       }
     }
   }
   ge-0/0/1 {
     flexible-vlan-tagging;
-    mtu 9500;
+    mtu 9100;
     unit 100 {
       description xe1.100;
       vlan-id 100;
       family inet6 {
-        mtu 9000;
         address fc00::101/64;
       }
     }
@@ -116,7 +113,6 @@ interfaces {
       description xe2-4001;
       vlan-id 4001;
       family inet {
-        mtu 9000;
         address 10.0.0.2/24;
       }
     }
