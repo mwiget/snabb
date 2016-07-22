@@ -96,6 +96,7 @@ function addif_to_bridge {
 
 function create_tap_if {
   ip tuntap add dev $1 mode tap
+  ifconfig $1 mtu 9200
   ip link set $1 up promisc on
 }
 
