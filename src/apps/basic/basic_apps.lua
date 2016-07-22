@@ -144,7 +144,6 @@ function Repeater:stop ()
    end
 end
 
-<<<<<<< HEAD
 --- ### `Statistics` app: Periodically print statistics
 
 Statistics = {}
