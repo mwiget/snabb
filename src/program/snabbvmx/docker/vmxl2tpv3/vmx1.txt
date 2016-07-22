@@ -4193,7 +4193,7 @@ system {
 interfaces {
     ge-0/0/0 {
         flexible-vlan-tagging;
-        mtu 9500;
+        mtu 9100;
         unit 100 {
             description xe0.100;
             vlan-id 100;
@@ -4211,7 +4211,7 @@ interfaces {
     }
     ge-0/0/1 {
         flexible-vlan-tagging;
-        mtu 9500;
+        mtu 9100;
         unit 100 {
             description xe1.100;
             vlan-id 100;
@@ -4243,7 +4243,7 @@ interfaces {
     }
     ge-0/0/2 {
         flexible-vlan-tagging;
-        mtu 9500;
+        mtu 9100;
         unit 100 {
             description xe2.100;
             vlan-id 100;
@@ -4268,7 +4268,7 @@ interfaces {
     }
     ge-0/0/3 {
         flexible-vlan-tagging;
-        mtu 9500;
+        mtu 9100;
         unit 100 {
             description xe3.100;
             vlan-id 100;
