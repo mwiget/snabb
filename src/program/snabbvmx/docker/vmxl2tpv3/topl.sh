@@ -2,7 +2,7 @@
 PORT="${1:-xe0}"
 while :
 do
-  SNABB_PID=$(ps ax |grep $PORT | grep snabbvmx|grep sock|awk '{print $1}')
+  SNABB_PID=$(ps ax |grep $PORT | grep snabbvmx|grep sock|head -1|awk '{print $1}')
   if [ ! -z "$SNABB_PID" ]; then
     snabb top $SNABB_PID
   fi

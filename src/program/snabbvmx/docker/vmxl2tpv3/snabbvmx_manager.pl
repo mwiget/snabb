@@ -79,7 +79,7 @@ sub process_new_config {
   if ($signal) {
     print("sending $signal to process snabb snabbvmx\n");
     `pkill -$signal -f 'snabb snabbvmx'`;
-    `/usr/local/bin/snabb gc`;  # removing stale counters 
+#    `/usr/local/bin/snabb gc`;  # removing stale counters (no longer needed)
   }
 }
 
