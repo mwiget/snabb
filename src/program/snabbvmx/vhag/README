@@ -1,0 +1,64 @@
+Usage: vhag --help
+
+vhag --conf <config-file> --id <port-id> --pci <pci-address|interface> --mac <mac-address> \
+     --sock <socket-path> 
+
+
+Terminates IPv4 GRE packets with IP payload. 
+
+Arguments:
+
+  --conf    <config-file>   configuration file for vHAG service
+  --id      <port-id>       port_id for virtio socket
+  --access  <interface>     Access interface handling IPv4 GRE traffic, either
+                            PCI-address, Linux or virtio-net interface
+  --mac_access <mac address>   Ethernet address of access interface
+  --mac_trunk <mac address>   Ethernet address of trunk interface
+  --trunk   <interface>     Trunk interface handling q-in-q subscriber traffic, either
+                            PCI-address, Linux or virtio-net interface, uses access
+                            interface if not set
+
+Optional:
+
+  -D        <seconds>       Duration in seconds
+  -v                        Verbose (repeat for more verbosity)
+
+
+Example config file:
+
+# cat snabbvmx-vhag-xe0.cfg
+return {
+   ipv4_address = "10.0.1.1",
+   gre_ikey = "",                         # optional
+   gre_okey = "",                         # optional
+   cache_refresh_interval = 1,
+   next_hop_mac = "02:02:02:02:02:02",    # optional
+   vlan = 10,                             # optional
+}
+
+Description:
+
+ipv4_address            local GRE tunnel endpoint IPv4 address
+gre_ikey                GRE ingress key. 32 bit, e.g. 0x11223344
+gre_okey                GRE egress key.  32 bit, e.g. 0x22334455
+cache_refresh_interval  Interval in seconds, at which a packet is sent to the vMX
+                        to learn the next hop mac address (defaults to 1 second)
+next_hop_mac            If set, use this as the destination mac for GRE packets
+vlan                    VLAN id. Optional
+
+
+Discussion:
+
+GRE remote tunnel endpoint IPv4 addresses are learned from incoming GRE packets and
+are cached with the source mac of the payload ethernet packet as key. 
+
+How to distinguish LTE from cable tunnel endpoint? Use a bit in the GRE key field?
+Use a mask or prefix to match either? Or use bits in the TOS field, which could be 
+set by a downstream router?
+
+GRE ikey and okey: shall subscriber share the keys or shall it be derived from the 
+payload and hence be unique per subscriber? Keeping it optional allows for shorter
+GRE packets. 
+
+csum, icsum, ocsum: ip-tunnel linux supports these. Shall we add them too?
+

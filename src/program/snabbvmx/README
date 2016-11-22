@@ -3,6 +3,7 @@ Usage:
     snabbvmx lwaftr
     snabbvmx query
     snabbvmx top
+    snabbvmx vhag
 
 Use --help for per-command usage.
 
