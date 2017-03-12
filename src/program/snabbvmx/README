@@ -1,6 +1,7 @@
 Usage:
     snabbvmx check
     snabbvmx lwaftr
+    snabbvmx lwaftrgen
     snabbvmx query
     snabbvmx top
 
