@@ -162,6 +162,8 @@ function run(args)
       mirror_id = mirror_id,
    }
 
+   print("*********** sock_path=" .. sock_path)
+
    local c = config.new()
    setup.lwaftr_app(c, conf, lwconf, sock_path)
    engine.configure(c)

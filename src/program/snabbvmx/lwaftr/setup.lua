@@ -99,8 +99,9 @@ local function load_phy (c, nic_id, interface)
       if vlan then
          print(("WARNING: VLAN not supported over %s. %s vlan %d"):format(interface.pci, nic_id, vlan))
       end
-      config.app(c, nic_id, raw.RawSocket, interface.pci)
-      chain_input, chain_output = nic_id .. ".rx", nic_id .. ".tx"
+      raw_id = interface.pci
+      config.app(c, raw_id, raw.RawSocket, interface.pci)
+      chain_input, chain_output = raw_id .. ".rx", raw_id .. ".tx"
    else
       print(("Couldn't find device info for PCI address '%s'"):format(interface.pci))
       if not interface.mirror_id then
@@ -275,7 +276,13 @@ function lwaftr_app(c, conf, lwconf, sock_path)
       chain_input, chain_output = "vm_v4v6.input", "vm_v4v6.output"
    end
 
-   if sock_path then
+   if net_exists(sock_path) then
+      raw_id = sock_path 
+      print("Running with virtual interface instead of VM socket for " .. raw_id)
+      config.app(c, raw_id, raw.RawSocket, sock_path)
+      config.link(c, raw_id .. ".tx -> " .. chain_input)
+      config.link(c, chain_output .. " -> " .. raw_id  .. ".rx")
+   elseif sock_path then
       local socket_path = sock_path:format(conf.interface.id)
       config.app(c, virt_id, VhostUser, { socket_path = socket_path })
       config.link(c, virt_id .. ".tx -> " .. chain_input)
