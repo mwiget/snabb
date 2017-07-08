@@ -162,8 +162,6 @@ function run(args)
       mirror_id = mirror_id,
    }
 
-   print("*********** sock_path=" .. sock_path)
-
    local c = config.new()
    setup.lwaftr_app(c, conf, lwconf, sock_path)
    engine.configure(c)
@@ -191,7 +189,13 @@ function run(args)
       timer.activate(mon:timer(ingress_drop_interval))
    end
 
-   engine.busywait = true
+   if string.find(pci, "eth") then
+      print("interrupt mode")
+      engine.busywait = false
+   else
+      print("polling mode")
+      engine.busywait = true
+   end
    if opts.duration then
       engine.main({duration=opts.duration, report={showlinks=true}})
    else
