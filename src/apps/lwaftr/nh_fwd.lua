@@ -352,7 +352,7 @@ function nh_fwd6:push ()
             transmit(output_wire, pkt)
          elseif self.cache_refresh_interval == 0 and output_vm then
             -- Set next-hop MAC matching the one for the VM.
-            copy_ether(ether_dhost, next_hop_mac)
+            copy_ether(ether_dhost, mac_address)
             transmit(output_vm, pkt)
          else
             packet.free(pkt)
