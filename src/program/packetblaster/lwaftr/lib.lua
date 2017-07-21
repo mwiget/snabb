@@ -116,10 +116,21 @@ local function inc_ipv6(ipv6)
    return ipv6
 end
 
+local n_next_hop_mac_empty = ethernet:pton("00:00:00:00:00:00")
+local function get_ether_dhost_ptr (pkt)
+   return pkt.data
+end
+local function ether_equals (dst, src)
+   return C.memcmp(dst, src, 6) == 0
+end
+local function copy_ether(dst, src)
+   ffi.copy(dst, src, 6)
+end
+
 Lwaftrgen = {
    config = {
       sizes = {required=true},
-      dst_mac = {required=true},
+      dst_mac = {},
       src_mac = {required=true},
       rate = {required=true},
       vlan = {},
@@ -150,6 +161,7 @@ function Lwaftrgen:new(conf)
    local ipv4_pkt = packet.allocate()
    local eth_hdr = cast(ether_header_ptr_type, ipv4_pkt.data)
    eth_hdr.ether_dhost, eth_hdr.ether_shost = dst_mac, src_mac
+   local ether_ipv4_dhost = eth_hdr.ether_dhost
 
    local ipv4_hdr, udp_offset
    if vlan then
@@ -187,6 +199,7 @@ function Lwaftrgen:new(conf)
    local ipv6_pkt = packet.allocate()
    local eth_hdr = cast(ether_header_ptr_type, ipv6_pkt.data)
    eth_hdr.ether_dhost, eth_hdr.ether_shost = dst_mac, src_mac
+   local ether_ipv6_dhost = eth_hdr.ether_dhost
 
 
    local ipv6_hdr, ipv6_ipv4_hdr
@@ -245,6 +258,8 @@ function Lwaftrgen:new(conf)
       count = conf.count,
       single_pass = conf.single_pass,
       current_count = 0,
+      ether_ipv4_dhost = ether_ipv4_dhost,
+      ether_ipv6_dhost = ether_ipv6_dhost,
       ipv4_pkt = ipv4_pkt,
       ipv4_hdr = ipv4_hdr,
       ipv4_payload = ipv4_payload,
@@ -283,6 +298,8 @@ function Lwaftrgen:pull ()
    local lost_packets = self.lost_packets
    local udp_offset = self.udp_offset
    local o_ethertype = self.vlan and OFFSET_ETHERTYPE_VLAN or OFFSET_ETHERTYPE
+   local v4_dst_mac = self.ether_ipv4_dhost
+   local v6_dst_mac = self.ether_ipv6_dhost
 
    if self.current == 0 then
       main.exit(0)
@@ -291,6 +308,15 @@ function Lwaftrgen:pull ()
    -- count and trash incoming packets
    for _=1,link.nreadable(input) do
       local pkt = receive(input)
+      local ether_dhost = get_ether_dhost_ptr(pkt)
+
+      -- in case we don't have a dst_mac set, use the one from the first incoming packet
+      if ether_equals(v4_dst_mac, n_next_hop_mac_empty) then
+        copy_ether(v4_dst_mac, ether_dhost)
+        copy_ether(v6_dst_mac, ether_dhost)
+        print(("learning destination mac address %s"):format(ethernet:ntop(v4_dst_mac)))
+      end
+
       if cast(uint16_ptr_t, pkt.data + o_ethertype)[0] == PROTO_IPV6 then
          ipv6_bytes = ipv6_bytes + pkt.length
          ipv6_packets = ipv6_packets + 1
