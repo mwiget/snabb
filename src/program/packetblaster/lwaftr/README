@@ -21,7 +21,9 @@ Usage: packetblaster lwaftr [OPTIONS]
 			Default: 00:00:00:00:00:00
   --dst_mac DESTINATION
                         Destination MAC-Address
-			Default: 00:00:00:00:00:00
+			If missing, the source mac address of the first incoming
+                        packet will be used and a message printed to stdout
+                        
   --size SIZES
                         A comma separated list of numbers. Send packets of
                         SIZES bytes. The size specifies the lenght of the IPv4 
