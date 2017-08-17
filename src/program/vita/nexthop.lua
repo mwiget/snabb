@@ -5,6 +5,7 @@ module(...,package.seeall)
 local ethernet = require("lib.protocol.ethernet")
 
 NextHop4 = {
+   name = "NextHop4",
    config = {
       mac = {required=true}
    }

@@ -10,6 +10,7 @@ local ipv4 = require("lib.protocol.ipv4")
 PROTOCOL = 99 -- “Any private encryption scheme”
 
 KeyManager = {
+   name = "KeyManager",
    config = {
       routes = {required=true},
       esp_keyfile = {required=true},

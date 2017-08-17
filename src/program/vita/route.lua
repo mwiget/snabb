@@ -13,6 +13,7 @@ local ffi = require("ffi")
 -- route := { net_cidr4=(CIDR4), gw_ip4=(IPv4), preshared_key=(KEY) }
 
 PrivateRouter = {
+   name = "PrivateRouter",
    config = {
       routes = {required=true}
    }
@@ -72,6 +73,7 @@ end
 
 
 PublicRouter = {
+   name = "PublicRouter",
    config = {
       routes = {required=true},
       node_ip4 = {required=true}

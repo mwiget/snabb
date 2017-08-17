@@ -14,6 +14,7 @@ local ipv4 = require("lib.protocol.ipv4")
 local NextHeaderIPv4 = 4
 
 Encapsulate = {
+   name = "Encapsulate",
    config = {
       spi = {required=true},
       mode = {required=true},
@@ -39,6 +40,7 @@ end
 
 
 Decapsulate = {
+   name = "Decapsulate",
    config = {
       spi = {required=true},
       mode = {required=true},
@@ -71,6 +73,7 @@ end
 
 
 Tunnel4 = {
+   name = "Tunnel4",
    config = {
       src = {required=true},
       dst = {required=true}
