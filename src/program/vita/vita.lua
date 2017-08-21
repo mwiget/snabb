@@ -38,6 +38,7 @@ function configure_router (conf)
    config.app(c, "PublicNextHop", nexthop.NextHop4, conf.public_nexthop)
 
    config.app(c, "KeyExchange", exchange.KeyManager, {
+                 node_ip4 = conf.node_ip4,
                  routes = conf.routes,
                  esp_keyfile = conf.esp_keyfile,
                  dsp_keyfile = conf.dsp_keyfile,
