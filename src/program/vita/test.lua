@@ -60,6 +60,9 @@ engine.configure(c)
 worker.start("ESP", [[require("program.vita.vita").esp_worker()]])
 worker.start("DSP", [[require("program.vita.vita").dsp_worker()]])
 
+
+-- adapted from snabbnfv traffic
+
 local npackets = tonumber(main.parameters[2]) or 10e6
 local get_monotonic_time = require("ffi").C.get_monotonic_time
 local counter = require("core.counter")
