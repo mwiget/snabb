@@ -20,11 +20,14 @@ Encapsulate = {
       mode = {required=true},
       key = {required=true},
       salt = {required=true}
-   }
+   },
+   traced = false
 }
 
 function Encapsulate:new (sa)
-   return setmetatable({sa = esp.encrypt:new(sa)}, {__index = Encapsulate})
+   local o = setmetatable({sa = esp.encrypt:new(sa)}, {__index = Encapsulate})
+   if not self.traced then o:trace() end
+   return o
 end
 
 function Encapsulate:push ()
@@ -36,6 +39,26 @@ function Encapsulate:push ()
       if p_enc then link.transmit(output, p_enc)
       else packet.free(p) end
    end
+end
+
+function Encapsulate:trace ()
+   -- Question: Can I make the JIT compiler record "good" traces by simulating
+   -- the expected “perfect” workload?
+   local packet_size = 600
+   self.input, self.output = {}, {}
+   self.input.input4 = link.new("Encapsulate:trace/input4")
+   self.output.output = link.new("Encapsulate:trace/output")
+   while not link.full(self.input.input4) do
+      link.transmit(self.input.input4,
+                    packet.resize(packet.allocate(), packet_size))
+   end
+   self:push()
+   while not link.empty(self.output.output) do
+      packet.free(link.receive(self.output.output))
+   end
+   link.free(self.input.input4, "Encapsulate:trace/input4")
+   link.free(self.output.output, "Encapsulate:trace/output")
+   self.input, self.output = nil, nil
 end
 
 
