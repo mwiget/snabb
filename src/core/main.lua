@@ -9,6 +9,7 @@ package.path = ''
 local STP = require("lib.lua.StackTracePlus")
 local ffi = require("ffi")
 local zone = require("jit.zone")
+local jdump = require("jit.dump")
 local lib = require("core.lib")
 local shm = require("core.shm")
 local C   = ffi.C
@@ -41,6 +42,10 @@ _G.developer_debug = lib.getenv("SNABB_DEBUG") ~= nil
 debug_on_error = _G.developer_debug
 
 function main ()
+   do local jdump_path = shm.resolve("jdump")
+      shm.mkdir(jdump_path) -- ensure instance root exists
+      jdump.on("tbimT", shm.root.."/"..jdump_path)
+   end
    zone("startup")
    require "lib.lua.strict"
    -- Warn on unsupported platforms
