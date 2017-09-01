@@ -33,6 +33,11 @@ end
 
 function select_snabb_instance (pid)
    local instances = shm.children("/")
+   for i, instance in ipairs(instances) do
+      if instance == "hugetlbfs" then
+         table.remove(instances, i) -- ignore hugetlbfs directory
+      end
+   end
    if pid then
       -- Try to use given pid
       for _, instance in ipairs(instances) do
