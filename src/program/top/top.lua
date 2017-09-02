@@ -193,14 +193,19 @@ function print_link_metrics (new_stats, last_stats)
    end
 end
 
-function pad_str (s, n)
+function pad_str (s, n, no_pad)
    local padding = math.max(n - s:len(), 0)
-   return ("%s%s"):format(s:sub(1, n), (" "):rep(padding))
+   local truncated = s:sub(1, n)
+   local padded = ((not no_pad) and (" "):rep(padding)) or ""
+   return truncated..padded
 end
 
 function print_row (spec, args)
    for i, s in ipairs(args) do
-      io.write((" %s"):format(pad_str(s, spec[i])))
+      local column
+      if i < #args then column = pad_str(s, spec[i])
+      else              column = pad_str(s, spec[i], 'no-pad') end
+      io.write((" %s"):format(column))
    end
    io.write("\n")
 end

@@ -11,6 +11,7 @@ module(..., package.seeall)
 local lib = require("core.lib")
 local shm = require("core.shm")
 local S = require("syscall")
+local vmprofile = require("jit.vmprofile")
 
 --------------------------------------------------------------
 -- Master (parent) process code
@@ -25,7 +26,9 @@ end
 -- Start a named worker to execute the given Lua code (a string).
 function start (name, luacode)
    shm.mkdir(shm.resolve("group"))
-   local pid = S.fork()
+   -- disable profiling while forking, otherwise fork is interrupted by SIGPROF
+   vmprofile.stop()
+   local pid = assert(S.fork())
    if pid == 0 then
       -- First we perform some initialization functions and then we
       -- restart the process with execv().
@@ -45,6 +48,7 @@ function start (name, luacode)
       -- /proc/$$/exe is a link to the same Snabb executable that we are running
       lib.execv(("/proc/%d/exe"):format(S.getpid()), {})
    else
+      vmprofile.start() -- re-enable profiling
       -- Parent process
       children[name] = { pid = pid }
       return pid
