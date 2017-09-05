@@ -169,7 +169,7 @@ function initialize ()
    _G.timer  = require("core.timer")
    _G.main   = getfenv()
    shm.mkdir(shm.resolve(""))
-   jdump.on("tbimT", shm.root.."/"..shm.resolve("jdump"))
+   jdump.on("tbimTrs", shm.root.."/"..shm.resolve("jdump"))
 end
 
 function handler (reason)

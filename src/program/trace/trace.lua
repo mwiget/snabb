@@ -298,14 +298,14 @@ function inspect (args)
    local file, error = io.open(jdump)
    if not file then print(error) main.exit(1) end
 
-   local info = {}
-
+   local info
    while true do
       local l = file:read("*l")
       if not l then break end
 
       local trace = tonumber(l:match("^%-%-%-%- TRACE ([%d]+) start"))
-      local start = l:match("start (.*)$")
+      local parent, exit = l:match("start ([%w]+)/([%w]+)")
+      local start = l:match("[%w]+/[%w]+ (.*)$") or l:match("start (.*)$")
 
       if trace == id then
          local bytecode = ""
@@ -331,11 +331,15 @@ function inspect (args)
                else break end
             end
 
-            info.start = start
-            info.bytecode = bytecode
-            info.ir = ir
-            info.mcode = mcode
-            info.stop = assert(l:match("^%-%-%-%- TRACE [%d]+ stop %-> (.*)$"))
+            info = {
+               start = start,
+               parent = parent,
+               exit = exit,
+               bytecode = bytecode,
+               ir = ir,
+               mcode = mcode,
+               stop = assert(l:match("^%-%-%-%- TRACE [%d]+ stop %-> (.*)$"))
+            }
          end
 
          _ = file:read("*l") -- read terminating newline
@@ -347,6 +351,12 @@ function inspect (args)
       main.exit(1)
    end
 
-   if output then io.write(info[output])
-   else print(info.start.." -> "..info.stop) end
+   if output then
+      io.write(info[output])
+   else
+      print(info.start
+               ..((info.parent and " ("..info.parent.."/"..info.exit..")")
+                     or "")
+               .." -> "..info.stop)
+   end
 end
