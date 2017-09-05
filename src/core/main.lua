@@ -45,7 +45,7 @@ debug_on_error = _G.developer_debug
 function main ()
    do local jdump_path = shm.resolve("jdump")
       shm.mkdir(jdump_path) -- ensure instance root exists
-      jdump.on("tbimT", shm.root.."/"..jdump_path)
+      jdump.on("tbimTrs", shm.root.."/"..jdump_path)
    end
    zone("startup")
    require "lib.lua.strict"
