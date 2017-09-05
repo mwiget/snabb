@@ -7,7 +7,7 @@ local ipv4 = require("lib.protocol.ipv4")
 local esp = require("lib.ipsec.esp")
 local exchange = require("program.vita.exchange")
 local lpm = require("lib.lpm.lpm4_248").LPM4_248
-local cltable = require("lib.cltable")
+local ctable = require("lib.ctable")
 local ffi = require("ffi")
 
 -- route := { net_cidr4=(CIDR4), gw_ip4=(IPv4), preshared_key=(KEY) }
@@ -88,22 +88,31 @@ function PublicRouter:new (conf)
    }
    for _, route in ipairs(conf.routes) do
       o.routes[#o.routes+1] = {
-         gw_ip4 = assert(route.gw_ip4, "Missing gw_ip4")
+         gw_ip4 = assert(route.gw_ip4, "Missing gw_ip4"),
+         link = nil
       }
    end
    return setmetatable(o, {__index = PublicRouter})
 end
 
 function PublicRouter:link ()
-   self.routing_table4 = cltable.new{key_type=ffi.typeof("uint8_t[4]")}
-   for _, route in ipairs(self.routes) do
-      local l = self.output[config.link_name(route.gw_ip4)]
-      if l then self.routing_table4[ipv4:pton(route.gw_ip4)] = l end
+   local ipv4_addr_t = ffi.typeof("uint8_t[4]")
+   local index_t = ffi.typeof("uint32_t")
+   self.routing_table4 = ctable.new{
+      key_type = ipv4_addr_t,
+      value_type = index_t
+   }
+   for index, route in ipairs(self.routes) do
+      assert(ffi.cast(index_t, index) == index, "index overflow")
+      route.link = self.output[config.link_name(route.gw_ip4)]
+      if route.link then
+         self.routing_table4:add(ipv4:pton(route.gw_ip4), index)
+      end
    end
 end
 
 function PublicRouter:find_route4 (src)
-   return self.routing_table4[src]
+   return self.routes[self.routing_table4:lookup_ptr(src).value].link
 end
 
 function PublicRouter:forward4 (p)
