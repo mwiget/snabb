@@ -9,15 +9,16 @@ local ethernet= require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local datagram = require("lib.protocol.datagram")
 
--- sudo ./snabb snsh [<pktsize>]
--- default is IMIX                                      (-:
+-- sudo ./snabb snsh program/vita/test.lua [<pktsize>|IMIX] [<npackets>]
+-- default is 10 million packets at IMIX                (-:
 
+local IMIX = { 54, 54, 54, 54, 54, 54, 54, 590, 590, 590, 590, 1514 }
 
-function test_packets ()
-   local size = tonumber(main.parameters[1])
-   local IMIX = (size and {size}) or { 54, 54, 54, 54, 54, 54, 54, 590, 590, 590, 590, 1514 }
+function test_packets (pktsize)
+   pktsize = pktsize ~= "IMIX" and tonumber(pktsize)
+   local sizes = (pktsize and {pktsize}) or IMIX
    local packets = {}
-   for _, size in ipairs(IMIX) do
+   for _, size in ipairs(sizes) do
       local payload_size = size - ethernet:sizeof() - ipv4:sizeof()
       assert(payload_size >= 0, "Negative payload_size :-(")
       local d = datagram:new(packet.resize(packet.allocate(), payload_size))
@@ -47,7 +48,7 @@ local c, private, public = vita.configure_router{
 
 config.link(c, public.output.." -> "..public.input)
 
-config.app(c, "synth", Synth, {packets=test_packets()})
+config.app(c, "synth", Synth, {packets=test_packets(main.parameters[1])})
 config.link(c, "synth.output -> "..private.input)
 
 config.app(c, "sink", basic_apps.Sink)
