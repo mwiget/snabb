@@ -116,9 +116,9 @@ function PublicRouter:find_route4 (src)
 end
 
 function PublicRouter:forward4 (p)
-      local route = self:find_route4(self.ip4:src()) -- FIXME: allocates
    local ip4 = self.ip4:new_from_mem(p.data, p.length)
    if ip4 and ip4:protocol() == esp.PROTOCOL then
+      local route = self:find_route4(self.ip4:src())
       if route then
          link.transmit(route, packet.shiftleft(p, ipv4:sizeof()))
       else
