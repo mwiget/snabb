@@ -49,8 +49,8 @@ function PrivateRouter:find_route4 (dst)
 end
 
 function PrivateRouter:forward4 (p)
-   self.ip4:new_from_mem(p.data, p.length)
-   local route = self:find_route4(self.ip4:dst())
+   local ip4 = self.ip4:new_from_mem(p.data, p.length)
+   local route = ip4 and self:find_route4(ip4:dst())
    if route then
       link.transmit(route, p)
    else
@@ -62,7 +62,7 @@ function PrivateRouter:push ()
    local input = self.input.input
    for _=1,link.nreadable(input) do
       local p = link.receive(input)
-      self.eth:new_from_mem(p.data, p.length)
+      assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
       if self.eth:type() == 0x0800 then
          self:forward4(packet.shiftleft(p, ethernet:sizeof()))
       else
@@ -116,15 +116,15 @@ function PublicRouter:find_route4 (src)
 end
 
 function PublicRouter:forward4 (p)
-   self.ip4:new_from_mem(p.data, p.length)
-   if self.ip4:protocol() == esp.PROTOCOL then
       local route = self:find_route4(self.ip4:src()) -- FIXME: allocates
+   local ip4 = self.ip4:new_from_mem(p.data, p.length)
+   if ip4 and ip4:protocol() == esp.PROTOCOL then
       if route then
          link.transmit(route, packet.shiftleft(p, ipv4:sizeof()))
       else
          packet.free(p)
       end
-   elseif self.ip4:protocol() == exchange.PROTOCOL then
+   elseif ip4 and ip4:protocol() == exchange.PROTOCOL then
       link.transmit(self.output.protocol, p)
    else
       packet.free(p)
@@ -135,7 +135,7 @@ function PublicRouter:push ()
    local input = self.input.input
    for _=1,link.nreadable(input) do
       local p = link.receive(input)
-      self.eth:new_from_mem(p.data, p.length)
+      assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
       if self.eth:type() == 0x0800 then
          self:forward4(packet.shiftleft(p, ethernet:sizeof()))
       else
