@@ -5,6 +5,7 @@ local worker = require("core.worker")
 local vita = require("program.vita.vita")
 local basic_apps = require("apps.basic.basic_apps")
 local Synth = require("apps.test.synth").Synth
+local PcapFilter = require("apps.packet_filter.pcap_filter").PcapFilter
 local ethernet= require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local datagram = require("lib.protocol.datagram")
@@ -34,26 +35,31 @@ end
 
 
 local c, private, public = vita.configure_router{
-   private_nexthop = {mac="52:54:00:00:00:00"},
-   public_nexthop = {mac="52:54:00:00:00:00"},
+   node_mac = "52:54:00:00:00:00",
    node_ip4 = "192.168.10.1",
+   private_nexthop_ip4 = "192.168.10.1",
+   public_nexthop_ip4 = "192.168.10.1",
    routes = {
       {
          net_cidr4 = "192.168.10.0/24",
          gw_ip4 = "192.168.10.1",
          preshared_key = string.rep("00", 512)
       }
-   }
+   },
+   negotiation_ttl = 1
 }
 
 config.link(c, public.output.." -> "..public.input)
 
+config.app(c, "bridge", basic_apps.Join)
+config.link(c, "bridge.output -> "..private.input)
+
 config.app(c, "synth", Synth, {packets=test_packets(main.parameters[1])})
-config.link(c, "synth.output -> "..private.input)
+config.link(c, "synth.output -> bridge.synth")
 
-config.app(c, "sink", basic_apps.Sink)
-config.link(c, private.output.." -> sink.input")
-
+config.app(c, "sieve", PcapFilter, {filter="arp"})
+config.link(c, private.output.." -> sieve.input")
+config.link(c, "sieve.output -> bridge.arp")
 
 engine.log = true
 engine.configure(c)
@@ -69,7 +75,7 @@ local get_monotonic_time = require("ffi").C.get_monotonic_time
 local counter = require("core.counter")
 local start, packets, bytes = 0, 0, 0
 local function done ()
-   local input = link.stats(engine.app_table.sink.input.input)
+   local input = link.stats(engine.app_table.sieve.input.input)
    if start == 0 and input.txpackets > 0 then
       -- started receiving, record time and packet count
       packets = input.txpackets
@@ -84,7 +90,7 @@ local finish = get_monotonic_time()
 
 local runtime = finish - start
 local breaths = tonumber(counter.read(engine.breaths))
-local input = link.stats(engine.app_table.sink.input.input)
+local input = link.stats(engine.app_table.sieve.input.input)
 packets = input.txpackets - packets
 bytes = input.txbytes - bytes
 

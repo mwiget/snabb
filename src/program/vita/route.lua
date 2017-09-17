@@ -4,6 +4,7 @@ module(...,package.seeall)
 
 local ethernet = require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
+local arp = require("lib.protocol.arp")
 local esp = require("lib.ipsec.esp")
 local exchange = require("program.vita.exchange")
 local lpm = require("lib.lpm.lpm4_248").LPM4_248
@@ -60,11 +61,14 @@ end
 
 function PrivateRouter:push ()
    local input = self.input.input
+   local arp_output = self.output.arp
    for _=1,link.nreadable(input) do
       local p = link.receive(input)
       assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
-      if self.eth:type() == 0x0800 then
+      if self.eth:type() == 0x0800 then -- IPv4
          self:forward4(packet.shiftleft(p, ethernet:sizeof()))
+      elseif self.eth:type() == arp.ETHERTYPE then
+         link.transmit(arp_output, packet.shiftleft(p, ethernet:sizeof()))
       else
          packet.free(p)
       end
@@ -133,11 +137,14 @@ end
 
 function PublicRouter:push ()
    local input = self.input.input
+   local arp_output = self.output.arp
    for _=1,link.nreadable(input) do
       local p = link.receive(input)
       assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
-      if self.eth:type() == 0x0800 then
+      if self.eth:type() == 0x0800 then -- IPv4
          self:forward4(packet.shiftleft(p, ethernet:sizeof()))
+      elseif self.eth:type() == arp.ETHERTYPE then
+         link.transmit(arp_output, packet.shiftleft(p, ethernet:sizeof()))
       else
          packet.free(p)
       end
