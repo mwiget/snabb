@@ -26,7 +26,7 @@ function NextHop4:new (conf)
    local o = {}
    o.node_mac = ethernet:pton(conf.node_mac)
    o.node_ip4 = ipv4:pton(conf.node_ip4)
-   o.nexthop_ip4 = ipv4:pton(conf.nexthop_ip4)
+   o.nexthop_ip4 = conf.nexthop_ip4 and ipv4:pton(conf.nexthop_ip4)
 
    -- Ethernet frame header (node → nexthop)
    o.eth =  ethernet:new{
