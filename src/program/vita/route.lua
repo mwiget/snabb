@@ -44,21 +44,6 @@ function PrivateRouter:link ()
    self.routing_table4:build()
 end
 
-function PrivateRouter:find_route4 (dst)
-   local route = self.routes[self.routing_table4:search_bytes(dst)]
-   return route and route.link
-end
-
-function PrivateRouter:forward4 (p)
-   local ip4 = self.ip4:new_from_mem(p.data, p.length)
-   local route = ip4 and self:find_route4(ip4:dst())
-   if route then
-      link.transmit(route, p)
-   else
-      packet.free(p)
-   end
-end
-
 function PrivateRouter:push ()
    local input = self.input.input
    local arp_output = self.output.arp
@@ -72,6 +57,21 @@ function PrivateRouter:push ()
       else
          packet.free(p)
       end
+   end
+end
+
+function PrivateRouter:find_route4 (dst)
+   local route = self.routes[self.routing_table4:search_bytes(dst)]
+   return route and route.link
+end
+
+function PrivateRouter:forward4 (p)
+   local ip4 = self.ip4:new_from_mem(p.data, p.length)
+   local route = ip4 and self:find_route4(ip4:dst())
+   if route then
+      link.transmit(route, p)
+   else
+      packet.free(p)
    end
 end
 
@@ -115,6 +115,22 @@ function PublicRouter:link ()
    end
 end
 
+function PublicRouter:push ()
+   local input = self.input.input
+   local arp_output = self.output.arp
+   for _=1,link.nreadable(input) do
+      local p = link.receive(input)
+      assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
+      if self.eth:type() == 0x0800 then -- IPv4
+         self:forward4(packet.shiftleft(p, ethernet:sizeof()))
+      elseif self.eth:type() == arp.ETHERTYPE then
+         link.transmit(arp_output, packet.shiftleft(p, ethernet:sizeof()))
+      else
+         packet.free(p)
+      end
+   end
+end
+
 function PublicRouter:find_route4 (src)
    return self.routes[self.routing_table4:lookup_ptr(src).value].link
 end
@@ -132,21 +148,5 @@ function PublicRouter:forward4 (p)
       link.transmit(self.output.protocol, p)
    else
       packet.free(p)
-   end
-end
-
-function PublicRouter:push ()
-   local input = self.input.input
-   local arp_output = self.output.arp
-   for _=1,link.nreadable(input) do
-      local p = link.receive(input)
-      assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
-      if self.eth:type() == 0x0800 then -- IPv4
-         self:forward4(packet.shiftleft(p, ethernet:sizeof()))
-      elseif self.eth:type() == arp.ETHERTYPE then
-         link.transmit(arp_output, packet.shiftleft(p, ethernet:sizeof()))
-      else
-         packet.free(p)
-      end
    end
 end

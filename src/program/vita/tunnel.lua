@@ -92,17 +92,17 @@ function Tunnel4:new (conf)
    return setmetatable(o, {__index = Tunnel4})
 end
 
+function Tunnel4:push ()
+   local input, output = self.input.input, self.output.output
+   for _=1,link.nreadable(input) do
+      link.transmit(output, self:encapsulate(link.receive(input)))
+   end
+end
+
 function Tunnel4:encapsulate (p)
    p = packet.prepend(p, self.ip_template:header_ptr(), ipv4:sizeof())
    self.ip:new_from_mem(p.data, ipv4:sizeof())
    self.ip:total_length(p.length)
    self.ip:checksum()
    return p
-end
-
-function Tunnel4:push ()
-   local input, output = self.input.input, self.output.output
-   for _=1,link.nreadable(input) do
-      link.transmit(output, self:encapsulate(link.receive(input)))
-   end
 end
