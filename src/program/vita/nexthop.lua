@@ -30,7 +30,6 @@ function NextHop4:new (conf)
 
    -- Ethernet frame header (node → nexthop)
    o.eth =  ethernet:new{
-      type = 0x0800, -- IPv4
       src = o.node_mac
    }
 
@@ -102,7 +101,7 @@ function NextHop4:push ()
          end
          local entry = self.arp_table:lookup_ptr(nexthop_ip4)
          if entry then
-            link.transmit(output, self:encapsulate(p, entry.value))
+            link.transmit(output, self:encapsulate(p, entry.value, 0x0800))
          else
             packet.free(p)
             link.transmit(output, self:arp_request(nexthop_ip4))
@@ -123,8 +122,9 @@ function NextHop4:push ()
    end
 end
 
-function NextHop4:encapsulate (p, dst)
+function NextHop4:encapsulate (p, dst, type)
    self.eth:dst(dst)
+   self.eth:type(type)
    return packet.prepend(p, self.eth:header_ptr(), ethernet:sizeof())
 end
 
@@ -181,7 +181,7 @@ function NextHop4:handle_arp (p)
             arp_hdr:op('reply')
             --    Send the packet to the (new) target hardware address on
             --        the same hardware on which the request was received.
-            return self:encapsulate(p, arp_ipv4:tha())
+            return self:encapsulate(p, arp_ipv4:tha(), arp.ETHERTYPE)
          end
       end
    end
