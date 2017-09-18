@@ -4,6 +4,7 @@ module(...,package.seeall)
 
 local lib = require("core.lib")
 local shm = require("core.shm")
+local worker = require("core.worker")
 local route = require("program.vita.route")
 local tunnel = require("program.vita.tunnel")
 local nexthop = require("program.vita.nexthop")
@@ -11,19 +12,53 @@ local exchange = require("program.vita.exchange")
 local interlink = require("lib.interlink")
 local Receiver = require("apps.interlink.receiver")
 local Transmitter = require("apps.interlink.transmitter")
+local intel_mp = require("apps.intel_mp.intel_mp")
 local C = require("ffi").C
+local usage = require("program.vita.README_inc")
 
 local confspec = {
-   node_mac = {required=true},
-   node_ip4 = {required=true},
-   routes = {required=true},
+   private_interface = {required=true},
+   public_interface = {required=true},
    public_nexthop_ip4 = {},
    private_nexthop_ip4 = {},
+   node_ip4 = {required=true},
+   routes = {required=true},
    esp_keyfile = {default="group/esp_ephemeral_keys"},
    dsp_keyfile = {default="group/dsp_ephemeral_keys"},
    negotiation_ttl = {},
    sa_ttl = {}
 }
+
+function run (args)
+   if #args < 1 then print(usage) main.exit() end
+   local confpath = args[1]
+
+   worker.start("ESP", [[require("program.vita.vita").esp_worker()]])
+   worker.start("DSP", [[require("program.vita.vita").dsp_worker()]])
+
+   listen_confpath(confpath, configure_vita)
+end
+
+function configure_vita (conf)
+   local c, private, public = vita.configure_router(conf)
+
+   if conf.private_interface.pciaddr == conf.public_interface.pciaddr then
+      -- If given only a single network interface, we create two virtual
+      -- interfaces when the underlying NIC supports it.
+      conf.private_interface.vmdq = true
+      conf.public_interface.vmdq = true
+   end
+
+   config.app(c, "PrivateNIC", intel_mp.Intel, conf.private_interface)
+   config.link(c, "PrivateNIC.output -> "..private.input)
+   config.link(c, private.output.." -> PrivateNIC.input")
+
+   config.app(c, "PublicNIC", intel_mp.Intel,  conf.public_interface)
+   config.link(c, "PublicNIC.output -> "..public.input)
+   config.link(c, public.output.." -> PublicNIC.input")
+
+   return c
+end
 
 function configure_router (conf)
    conf = lib.parse(conf, confspec)
@@ -31,7 +66,7 @@ function configure_router (conf)
 
    config.app(c, "PrivateRouter", route.PrivateRouter, {routes=conf.routes})
    config.app(c, "PrivateNextHop", nexthop.NextHop4, {
-                 node_mac = conf.node_mac,
+                 node_mac = conf.private_interface.macaddr,
                  node_ip4 = conf.node_ip4,
                  nexthop_ip4 = conf.private_nexthop_ip4
    })
@@ -42,7 +77,7 @@ function configure_router (conf)
                  node_ip4 = conf.node_ip4
    })
    config.app(c, "PublicNextHop", nexthop.NextHop4, {
-                 node_mac = conf.node_mac,
+                 node_mac = conf.public_interface.macaddr,
                  node_ip4 = conf.node_ip4,
                  nexthop_ip4 = conf.public_nexthop_ip4
    })

@@ -35,10 +35,11 @@ end
 
 
 local c, private, public = vita.configure_router{
-   node_mac = "52:54:00:00:00:00",
-   node_ip4 = "192.168.10.1",
+   private_interface = { macaddr = "52:54:00:00:00:00" },
+   public_interface = { macaddr = "52:54:00:00:00:FF" },
    private_nexthop_ip4 = "192.168.10.1",
    public_nexthop_ip4 = "192.168.10.1",
+   node_ip4 = "192.168.10.1",
    routes = {
       {
          net_cidr4 = "192.168.10.0/24",

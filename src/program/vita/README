@@ -1,0 +1,4 @@
+Usage:
+  vita <confpath>
+
+Start Vita with the configuration in <confpath>.
