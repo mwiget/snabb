@@ -85,7 +85,8 @@ function Tunnel4:new (conf)
       ip_template = ipv4:new{
          src = ipv4:pton(conf.src),
          dst = ipv4:pton(conf.dst),
-         protocol = esp.PROTOCOL
+         protocol = esp.PROTOCOL,
+         ttl = 64
       },
       ip = ipv4:new{}
    }
