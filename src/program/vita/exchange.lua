@@ -209,18 +209,12 @@ function KeyManager:parse_request (request)
                             request.data + ipv4:sizeof() + request_t_length)
    -- TODO: authenticate request by verifying trailer.icv
 
-   local function hexdump (bytes, n)
-      local s = ""
-      for i = 0, n - 1 do s = s..("%02X"):format(bytes[i]) end
-      return s
-   end
-
    local body = ffi.cast(request_t_ptr_t, request.data + ipv4:sizeof())
    local sa = {
       mode = "aes-gcm-128-12",
       spi = lib.ntohl(body.spi),
-      key = hexdump(body.key, 16),
-      salt = hexdump(body.salt, 4)
+      key = lib.hexdump(ffi.string(body.key, 16)),
+      salt = lib.hexdump(ffi.string(body.salt, 4))
    }
 
    return route, sa

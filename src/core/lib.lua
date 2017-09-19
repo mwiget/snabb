@@ -204,14 +204,15 @@ function hexdump(s)
    return string.format(frm, s:byte(1, #s))
 end
 
-function hexundump(h, n)
+function hexundump(h, n, error)
    local buf = ffi.new('char[?]', n)
    local i = 0
-   for b in h:gmatch('%x%x') do
+   for b in h:gmatch('%s*(%x%x)') do
       buf[i] = tonumber(b, 16)
       i = i+1
       if i >= n then break end
    end
+   assert(i == n, error or "Wanted "..n.." bytes, but only got "..i)
    return ffi.string(buf, n)
 end
 
