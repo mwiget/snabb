@@ -2,6 +2,7 @@
 
 module(...,package.seeall)
 
+local counter = require("core.counter")
 local ethernet = require("lib.protocol.ethernet")
 local arp = require("lib.protocol.arp")
 local arp_ipv4 = require("lib.protocol.arp_ipv4")
@@ -19,6 +20,14 @@ NextHop4 = {
       node_mac = {required=true},
       node_ip4 = {required=true},
       nexthop_ip4 = {}
+   },
+   shm = {
+      rxdrop = {counter},
+      arp_requests = {counter},
+      arp_replies = {counter},
+      arp_errors = {counter},
+      addresses_added = {counter},
+      addresses_updated = {counter}
    }
 }
 
@@ -103,7 +112,9 @@ function NextHop4:push ()
          if entry then
             link.transmit(output, self:encapsulate(p, entry.value, 0x0800))
          else
+            counter.add(self.shm.rxdrop)
             packet.free(p)
+            counter.add(self.shm.arp_requests)
             link.transmit(output, self:arp_request(nexthop_ip4))
          end
       end
@@ -115,6 +126,7 @@ function NextHop4:push ()
       local p = link.receive(arp_input)
       local reply = self:handle_arp(p)
       if reply then
+         counter.add(self.shm.arp_replies)
          link.transmit(output, reply)
       else
          packet.free(p)
@@ -157,6 +169,7 @@ function NextHop4:handle_arp (p)
       --        hardware address field of the entry with the new
       --        information in the packet and set Merge_flag to true.
       if entry then
+         counter.add(self.shm.addresses_updated)
          ffi.copy(entry.value, arp_ipv4:sha(), ffi.sizeof(arp_ipv4:sha()))
       end
       --    ?Am I the target protocol address?
@@ -166,6 +179,7 @@ function NextHop4:handle_arp (p)
          --        sender protocol address, sender hardware address> to
          --        the translation table.
          if not entry then
+            counter.add(self.shm.addresses_added)
             self.arp_table:add(arp_ipv4:spa(), arp_ipv4:sha())
          end
          --    ?Is the opcode ares_op$REQUEST?  (NOW look at the opcode!!)
@@ -184,5 +198,7 @@ function NextHop4:handle_arp (p)
             return self:encapsulate(p, arp_ipv4:tha(), arp.ETHERTYPE)
          end
       end
+   else
+      counter.add(self.shm.arp_errors)
    end
 end

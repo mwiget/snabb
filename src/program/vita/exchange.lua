@@ -5,6 +5,7 @@ module(...,package.seeall)
 local S = require("syscall")
 local ffi = require("ffi")
 local shm = require("core.shm")
+local counter = require("core.counter")
 local lib = require("core.lib")
 local ipv4 = require("lib.protocol.ipv4")
 local logger = lib.logger_new({ rate = 32, module = 'KeyManager' })
@@ -20,6 +21,13 @@ KeyManager = {
       dsp_keyfile = {required=true},
       negotiation_ttl = {default=10},
       sa_ttl = {default=(7 * 24 * 60 * 60)}
+   },
+   shm = {
+      rxerrors = {counter},
+      route_errors = {counter},
+      negotiations_expired = {counter},
+      keypairs_exchanged = {counter},
+      keypairs_expired = {counter}
    }
 }
 
@@ -87,6 +95,7 @@ end
 function KeyManager:handle_negotiation (request)
    local route, sa = self:parse_request(request)
    if not route then
+      counter.add(self.shm.rxerrors)
       logger:log("Ignoring malformed key exchange request")
       return
    end
@@ -96,6 +105,7 @@ function KeyManager:handle_negotiation (request)
    route.rx_sa = sa
 
    if route.status == status.negotiating then
+      counter.add(self.shm.keypairs_exchanged)
       logger:log("Completed key exchange with "..route.gw_ip4)
       route.status = status.ready
       timer.deactivate(route.timeout)
@@ -110,6 +120,7 @@ function KeyManager:set_negotiation_timeout (route)
    route.timeout = timer.new(
       "negotiation_ttl",
       function ()
+         counter.add(self.shm.negotiations_expired)
          logger:log("Expiring keys for "..route.gw_ip4.." (negotiation_ttl)")
          self:expire_route(route)
       end,
@@ -122,6 +133,7 @@ function KeyManager:set_sa_timeout (route)
    route.timeout = timer.new(
       "sa_ttl",
       function ()
+         counter.add(self.shm.keypairs_expired)
          logger:log("Expiring keys for "..route.gw_ip4.." (sa_ttl)")
          self:expire_route(route)
       end,
@@ -202,7 +214,10 @@ function KeyManager:parse_request (request)
          break
       end
    end
-   if not route then return end
+   if not route then
+      counter.add(self.shm.route_errors)
+      return
+   end
 
    -- TODO: decrypt body using route.preshared_key
 

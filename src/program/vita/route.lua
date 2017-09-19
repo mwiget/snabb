@@ -2,6 +2,7 @@
 
 module(...,package.seeall)
 
+local counter = require("core.counter")
 local ethernet = require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local arp = require("lib.protocol.arp")
@@ -17,6 +18,11 @@ PrivateRouter = {
    name = "PrivateRouter",
    config = {
       routes = {required=true}
+   },
+   shm = {
+      rxerrors = {counter},
+      ethertype_errors = {counter},
+      route_errors = {counter}
    }
 }
 
@@ -56,6 +62,8 @@ function PrivateRouter:push ()
          link.transmit(arp_output, packet.shiftleft(p, ethernet:sizeof()))
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.ethertype_errors)
       end
    end
 end
@@ -72,6 +80,8 @@ function PrivateRouter:forward4 (p)
       link.transmit(route, p)
    else
       packet.free(p)
+      counter.add(self.shm.rxerrors)
+      counter.add(self.shm.route_errors)
    end
 end
 
@@ -81,6 +91,12 @@ PublicRouter = {
    config = {
       routes = {required=true},
       node_ip4 = {required=true}
+   },
+   shm = {
+      rxerrors = {counter},
+      ethertype_errors = {counter},
+      protocol_errors = {counter},
+      route_errors = {counter},
    }
 }
 
@@ -127,6 +143,8 @@ function PublicRouter:push ()
          link.transmit(arp_output, packet.shiftleft(p, ethernet:sizeof()))
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.ethertype_errors)
       end
    end
 end
@@ -143,10 +161,14 @@ function PublicRouter:forward4 (p)
          link.transmit(route, packet.shiftleft(p, ipv4:sizeof()))
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.route_errors)
       end
    elseif ip4 and ip4:protocol() == exchange.PROTOCOL then
       link.transmit(self.output.protocol, p)
    else
       packet.free(p)
+      counter.add(self.shm.rxerrors)
+      counter.add(self.shm.protocol_errors)
    end
 end
