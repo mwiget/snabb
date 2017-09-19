@@ -157,7 +157,7 @@ function NextHop4:handle_arp (p)
       --        hardware address field of the entry with the new
       --        information in the packet and set Merge_flag to true.
       if entry then
-         entry.value = arp_ipv4:sha()
+         ffi.copy(entry.value, arp_ipv4:sha(), ffi.sizeof(arp_ipv4:sha()))
       end
       --    ?Am I the target protocol address?
       if ip4eq(arp_ipv4:tpa(), self.node_ip4) then
