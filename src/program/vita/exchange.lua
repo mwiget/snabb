@@ -167,7 +167,7 @@ function KeyManager:request (route)
          src = self.node_ip4n,
          dst = route.gw_ip4n
    })
-   packet.append(request, self.ip:header_ptr(), ipv4:sizeof())
+   packet.append(request, self.ip:header(), ipv4:sizeof())
 
    packet.resize(request, request_length)
 

@@ -94,7 +94,7 @@ function Tunnel4:new (conf)
 end
 
 function Tunnel4:encapsulate (p)
-   p = packet.prepend(p, self.ip_template:header_ptr(), ipv4:sizeof())
+   p = packet.prepend(p, self.ip_template:header(), ipv4:sizeof())
    self.ip:new_from_mem(p.data, ipv4:sizeof())
    self.ip:total_length(p.length)
    self.ip:checksum()

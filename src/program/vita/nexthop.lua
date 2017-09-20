@@ -22,7 +22,7 @@ function NextHop4:new (conf)
 end
 
 function NextHop4:encapsulate (p)
-   return packet.prepend(p, self.eth:header_ptr(), ethernet:sizeof())
+   return packet.prepend(p, self.eth:header(), ethernet:sizeof())
 end
 
 function NextHop4:push ()
