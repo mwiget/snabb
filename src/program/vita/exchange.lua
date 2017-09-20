@@ -189,9 +189,8 @@ end
 function KeyManager:parse_request (request)
    if request.length ~= request_length then return end
 
-   if not self.ip:new_from_mem(request.data, request_length)
-      or self.ip:protocol() ~= PROTOCOL or not self.ip:dst_eq(self.node_ip4n)
-   then
+   self.ip:new_from_mem(request.data, ipv4:sizeof())
+   if self.ip:protocol() ~= PROTOCOL or not self.ip:dst_eq(self.node_ip4n) then
       return
    end
 
