@@ -62,8 +62,9 @@ function PrivateRouter:push ()
    local input = self.input.input
    for _=1,link.nreadable(input) do
       local p = link.receive(input)
-      assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
-      if self.eth:type() == 0x0800 then
+      if self.eth:new_from_mem(p.data, p.length)
+         and self.eth:type() == 0x0800
+      then
          self:forward4(packet.shiftleft(p, ethernet:sizeof()))
       else
          packet.free(p)
@@ -135,8 +136,9 @@ function PublicRouter:push ()
    local input = self.input.input
    for _=1,link.nreadable(input) do
       local p = link.receive(input)
-      assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
-      if self.eth:type() == 0x0800 then
+      if self.eth:new_from_mem(p.data, p.length)
+         and self.eth:type() == 0x0800
+      then
          self:forward4(packet.shiftleft(p, ethernet:sizeof()))
       else
          packet.free(p)
