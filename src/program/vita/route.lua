@@ -24,7 +24,9 @@ function PrivateRouter:new (conf)
    local o = {
       routes = {},
       eth = ethernet:new({}),
-      ip4 = ipv4:new({})
+      ip4 = ipv4:new({}),
+      fwd4_packets = packet_buffer(),
+      arp_packets = packet_buffer()
    }
    for _, route in ipairs(conf.routes) do
       o.routes[#o.routes+1] = {
@@ -46,17 +48,29 @@ end
 
 function PrivateRouter:push ()
    local input = self.input.input
-   local arp_output = self.output.arp
+
+   local fwd4_packets, fwd4_cursor = self.fwd4_packets, 0
+   local arp_packets, arp_cursor = self.arp_packets, 0
    for _=1,link.nreadable(input) do
       local p = link.receive(input)
-      assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
-      if self.eth:type() == 0x0800 then -- IPv4
-         self:forward4(packet.shiftleft(p, ethernet:sizeof()))
-      elseif self.eth:type() == arp.ETHERTYPE then
-         link.transmit(arp_output, packet.shiftleft(p, ethernet:sizeof()))
+      local eth = self.eth:new_from_mem(p.data, p.length)
+      if eth and eth:type() == 0x0800 then -- IPv4
+         fwd4_packets[fwd4_cursor] = packet.shiftleft(p, ethernet:sizeof())
+         fwd4_cursor = fwd4_cursor + 1
+      elseif eth and eth:type() == arp.ETHERTYPE then
+         arp_packets[arp_cursor] = packet.shiftleft(p, ethernet:sizeof())
+         arp_cursor = arp_cursor + 1
       else
          packet.free(p)
       end
+   end
+
+   for i = 0, fwd4_cursor - 1 do
+      self:forward4(fwd4_packets[i])
+   end
+
+   for i = 0, arp_cursor - 1 do
+      link.transmit(self.output.arp, arp_packets[i])
    end
 end
 
@@ -88,7 +102,11 @@ function PublicRouter:new (conf)
    local o = {
       routes = {},
       eth = ethernet:new({}),
-      ip4 = ipv4:new({})
+      ip4 = ipv4:new({}),
+      ip4_packets = packet_buffer(),
+      fwd4_packets = packet_buffer(),
+      protocol_packets = packet_buffer(),
+      arp_packets = packet_buffer()
    }
    for _, route in ipairs(conf.routes) do
       o.routes[#o.routes+1] = {
@@ -117,17 +135,49 @@ end
 
 function PublicRouter:push ()
    local input = self.input.input
-   local arp_output = self.output.arp
+
+   local ip4_packets, ip4_cursor = self.ip4_packets, 0
+   local arp_packets, arp_cursor = self.arp_packets, 0
    for _=1,link.nreadable(input) do
       local p = link.receive(input)
-      assert(self.eth:new_from_mem(p.data, p.length), "packet too short")
-      if self.eth:type() == 0x0800 then -- IPv4
-         self:forward4(packet.shiftleft(p, ethernet:sizeof()))
-      elseif self.eth:type() == arp.ETHERTYPE then
-         link.transmit(arp_output, packet.shiftleft(p, ethernet:sizeof()))
+      local eth = self.eth:new_from_mem(p.data, p.length)
+      if eth and eth:type() == 0x0800 then -- IPv4
+         ip4_packets[ip4_cursor] = packet.shiftleft(p, ethernet:sizeof())
+         ip4_cursor = ip4_cursor + 1
+      elseif eth and eth:type() == arp.ETHERTYPE then
+         arp_packets[arp_cursor] = packet.shiftleft(p, ethernet:sizeof())
+         arp_cursor = arp_cursor + 1
       else
          packet.free(p)
       end
+   end
+
+   local fwd4_packets, fwd4_cursor = self.fwd4_packets, 0
+   local protocol_packets, protocol_cursor = self.protocol_packets, 0
+   for i = 0, ip4_cursor - 1 do
+      local p = ip4_packets[i]
+      local ip4 = self.ip4:new_from_mem(p.data, p.length)
+      if ip4 and ip4:protocol() == esp.PROTOCOL then
+         fwd4_packets[fwd4_cursor] = p
+         fwd4_cursor = fwd4_cursor + 1
+      elseif ip4 and ip4:protocol() == exchange.PROTOCOL then
+         protocol_packets[protocol_cursor] = p
+         protocol_cursor = protocol_cursor + 1
+      else
+         packet.free(p)
+      end
+   end
+
+   for i = 0, fwd4_cursor - 1 do
+      self:forward4(fwd4_packets[i])
+   end
+
+   for i = 0, protocol_cursor - 1 do
+      link.transmit(self.output.protocol, protocol_packets[i])
+   end
+
+   for i = 0, arp_cursor - 1 do
+      link.transmit(self.output.arp, arp_packets[i])
    end
 end
 
@@ -136,17 +186,16 @@ function PublicRouter:find_route4 (src)
 end
 
 function PublicRouter:forward4 (p)
-   local ip4 = self.ip4:new_from_mem(p.data, p.length)
-   if ip4 and ip4:protocol() == esp.PROTOCOL then
-      local route = self:find_route4(self.ip4:src())
-      if route then
-         link.transmit(route, packet.shiftleft(p, ipv4:sizeof()))
-      else
-         packet.free(p)
-      end
-   elseif ip4 and ip4:protocol() == exchange.PROTOCOL then
-      link.transmit(self.output.protocol, p)
+   self.ip4:new_from_mem(p.data, p.length)
+   local route = self:find_route4(self.ip4:src())
+   if route then
+      link.transmit(route, packet.shiftleft(p, ipv4:sizeof()))
    else
       packet.free(p)
    end
+end
+
+
+function packet_buffer ()
+   return ffi.new("struct packet *[?]", link.max)
 end
