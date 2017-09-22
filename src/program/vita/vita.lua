@@ -174,6 +174,9 @@ function listen_confpath (confpath, loader, interval)
       else
          print("Reconfigure: error: "..c)
       end
-      engine.main({done=function() return needs_reconfigure end})
+      engine.main({
+         done = function() return needs_reconfigure end,
+         no_report = true
+      })
    end
 end
