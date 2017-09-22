@@ -143,7 +143,7 @@ function dsp_worker (keyfile, reconf_interval)
    keyfile = shm.root.."/"..shm.resolve(
       keyfile or confspec.dsp_keyfile.default
    )
-   -- engine.log = true
+   engine.log = true
    listen_confpath(keyfile, configure_dsp, reconf_interval)
 end
 
