@@ -138,18 +138,18 @@ function KeyManager:expire_route (route)
    self:commit_ephemeral_keys()
 end
 
-local request_t = ffi.typeof[[struct {
+local request_t = ffi.typeof([[struct {
   uint32_t spi;
   uint8_t key[16];
   uint8_t salt[4];
-} __attribute__((packed))]]
+} __attribute__((packed))]])
 
 local request_t_ptr_t = ffi.typeof("$*", request_t)
 local request_t_length = ffi.sizeof(request_t)
 
-local request_trailer_t = ffi.typeof[[struct {
+local request_trailer_t = ffi.typeof([[struct {
   uint8_t icv[12];
-} __attribute__((packed))]]
+} __attribute__((packed))]])
 
 local request_trailer_t_ptr_t = ffi.typeof("$*", request_trailer_t)
 local request_trailer_t_length = ffi.sizeof(request_trailer_t)
@@ -167,7 +167,7 @@ function KeyManager:request (route)
          src = self.node_ip4n,
          dst = route.gw_ip4n
    })
-   packet.append(request, self.ip:header_ptr(), ipv4:sizeof())
+   packet.append(request, self.ip:header(), ipv4:sizeof())
 
    packet.resize(request, request_length)
 
@@ -189,8 +189,7 @@ end
 function KeyManager:parse_request (request)
    if request.length ~= request_length then return end
 
-   self.ip:new_from_mem(request.data, request_length)
-
+   self.ip:new_from_mem(request.data, ipv4:sizeof())
    if self.ip:protocol() ~= PROTOCOL or not self.ip:dst_eq(self.node_ip4n) then
       return
    end

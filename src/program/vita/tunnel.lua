@@ -85,7 +85,8 @@ function Tunnel4:new (conf)
       ip_template = ipv4:new{
          src = ipv4:pton(conf.src),
          dst = ipv4:pton(conf.dst),
-         protocol = esp.PROTOCOL
+         protocol = esp.PROTOCOL,
+         ttl = 64
       },
       ip = ipv4:new{}
    }
@@ -93,8 +94,8 @@ function Tunnel4:new (conf)
 end
 
 function Tunnel4:encapsulate (p)
-   p = packet.prepend(p, self.ip_template:header_ptr(), ipv4:sizeof())
-   self.ip:new_from_mem(p.data, p.length)
+   p = packet.prepend(p, self.ip_template:header(), ipv4:sizeof())
+   self.ip:new_from_mem(p.data, ipv4:sizeof())
    self.ip:total_length(p.length)
    self.ip:checksum()
    return p

@@ -143,7 +143,7 @@ function dsp_worker (keyfile, reconf_interval)
    keyfile = shm.root.."/"..shm.resolve(
       keyfile or confspec.dsp_keyfile.default
    )
-   -- engine.log = true
+   engine.log = true
    listen_confpath(keyfile, configure_dsp, reconf_interval)
 end
 
@@ -174,6 +174,9 @@ function listen_confpath (confpath, loader, interval)
       else
          print("Reconfigure: error: "..c)
       end
-      engine.main({done=function() return needs_reconfigure end})
+      engine.main({
+         done = function() return needs_reconfigure end,
+         no_report = true
+      })
    end
 end
