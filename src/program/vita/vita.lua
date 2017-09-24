@@ -42,6 +42,11 @@ end
 function configure_vita (conf)
    local c, private, public = vita.configure_router(conf)
 
+   -- Gracious limit for user defined MTU on private interface to avoid packet
+   -- payload overun due to ESP tunnel overhead.
+   conf.private_interface.mtu =
+      math.min(conf.private_interface.mtu or 8000, 8000)
+
    if conf.private_interface.pciaddr == conf.public_interface.pciaddr then
       -- If given only a single network interface, we create two virtual
       -- interfaces when the underlying NIC supports it.
