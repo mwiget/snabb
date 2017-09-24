@@ -2,6 +2,7 @@
 
 local lib = require("core.lib")
 local worker = require("core.worker")
+local counter = require("core.counter")
 local vita = require("program.vita.vita")
 local basic_apps = require("apps.basic.basic_apps")
 local Synth = require("apps.test.synth").Synth
@@ -72,17 +73,18 @@ worker.start("DSP", [[require("program.vita.vita").dsp_worker()]])
 
 local npackets = tonumber(main.parameters[2]) or 10e6
 local get_monotonic_time = require("ffi").C.get_monotonic_time
-local counter = require("core.counter")
 local start, packets, bytes = 0, 0, 0
+local dest_link = engine.app_table.sieve.input.input
 local function done ()
-   local input = link.stats(engine.app_table.sieve.input.input)
-   if start == 0 and input.txpackets > 0 then
+   local txpackets = counter.read(dest_link.stats.txpackets)
+   local txbytes = counter.read(dest_link.stats.txbytes)
+   if start == 0 and txpackets > 0 then
       -- started receiving, record time and packet count
-      packets = input.txpackets
-      bytes = input.txbytes
+      packets = txpackets
+      bytes = txbytes
       start = get_monotonic_time()
    end
-   return input.txpackets - packets >= npackets
+   return txpackets - packets >= npackets
 end
 
 engine.main({done=done, report={showlinks=true}})
@@ -90,9 +92,8 @@ local finish = get_monotonic_time()
 
 local runtime = finish - start
 local breaths = tonumber(counter.read(engine.breaths))
-local input = link.stats(engine.app_table.sieve.input.input)
-packets = input.txpackets - packets
-bytes = input.txbytes - bytes
+packets = tonumber(counter.read(dest_link.stats.txpackets) - packets)
+bytes = tonumber(counter.read(dest_link.stats.txbytes) - bytes)
 
 for w, s in pairs(worker.status()) do
    print(("worker %s: pid=%s alive=%s status=%s"):format(
