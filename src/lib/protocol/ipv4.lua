@@ -162,6 +162,12 @@ function ipv4:checksum ()
    return ntohs(self:header().checksum)
 end
 
+function ipv4:checksum_ok ()
+   local header_ptr = ffi.cast("uint8_t *", self:header())
+   local checksum = ntohs(ip4:header().checksum))
+   return ipsum(header_ptr, self:sizeof(), checksum) == 0
+end
+
 function ipv4:src (ip)
    if ip ~= nil then
       ffi.copy(self:header().src_ip, ip, ipv4_addr_t_size)
