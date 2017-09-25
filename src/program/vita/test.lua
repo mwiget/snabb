@@ -78,8 +78,9 @@ local dest_link = engine.app_table.sieve.input.input
 local function done ()
    local txpackets = counter.read(dest_link.stats.txpackets)
    local txbytes = counter.read(dest_link.stats.txbytes)
-   if start == 0 and txpackets > 0 then
+   if start == 0 and txpackets > 100 then
       -- started receiving, record time and packet count
+      print("TEST START")
       packets = txpackets
       bytes = txbytes
       start = get_monotonic_time()
