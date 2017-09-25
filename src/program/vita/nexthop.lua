@@ -2,6 +2,7 @@
 
 module(...,package.seeall)
 
+local counter = require("core.counter")
 local ethernet = require("lib.protocol.ethernet")
 local arp = require("lib.protocol.arp")
 local arp_ipv4 = require("lib.protocol.arp_ipv4")
@@ -18,6 +19,13 @@ NextHop4 = {
       node_mac = {required=true},
       node_ip4 = {required=true},
       nexthop_ip4 = {required=true}
+   },
+   shm = {
+      arp_requests = {counter},
+      arp_replies = {counter},
+      arp_errors = {counter},
+      addresses_added = {counter},
+      addresses_updated = {counter}
    }
 }
 
@@ -90,6 +98,7 @@ function NextHop4:push ()
       local p = link.receive(arp_input)
       local reply = self:handle_arp(p)
       if reply then
+         counter.add(self.shm.arp_replies)
          link.transmit(output, reply)
       else
          packet.free(p)
@@ -99,6 +108,7 @@ function NextHop4:push ()
    -- Sent ARP request if not connected
    if not self.connected then
       link.transmit(output, self:arp_request(self.nexthop_ip4))
+      counter.add(self.shm.arp_requests)
       return
    end
 
@@ -145,6 +155,7 @@ function NextHop4:handle_arp (p)
       --        information in the packet and set Merge_flag to true.
       if ip4eq(arp_ipv4:spa(), self.nexthop_ip4) and self.connected then
          self.eth:dst(arp_ipv4:sha())
+         counter.add(self.shm.addresses_updated)
          self.connected = true
       end
       --    ?Am I the target protocol address?
@@ -155,6 +166,7 @@ function NextHop4:handle_arp (p)
          --        the translation table.
          if not self.connected then
             self.eth:dst(arp_ipv4:sha())
+            counter.add(self.shm.addresses_added)
             self.connected = true
          end
          --    ?Is the opcode ares_op$REQUEST?  (NOW look at the opcode!!)
@@ -173,5 +185,7 @@ function NextHop4:handle_arp (p)
             return self:encapsulate(p, arp.ETHERTYPE)
          end
       end
+   else
+      counter.add(self.shm.arp_errors)
    end
 end

@@ -2,6 +2,7 @@
 
 module(...,package.seeall)
 
+local counter = require("core.counter")
 local ethernet = require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local arp = require("lib.protocol.arp")
@@ -18,6 +19,12 @@ PrivateRouter = {
    name = "PrivateRouter",
    config = {
       routes = {required=true}
+   },
+   shm = {
+      rxerrors = {counter},
+      ethertype_errors = {counter},
+      protocol_errors = {counter},
+      route_errors = {counter}
    }
 }
 
@@ -63,6 +70,8 @@ function PrivateRouter:push ()
          arp_cursor = arp_cursor + 1
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.ethertype_errors)
       end
    end
 
@@ -77,6 +86,8 @@ function PrivateRouter:push ()
          new_cursor = new_cursor + 1
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.protocol_errors)
       end
    end
    fwd4_cursor = new_cursor
@@ -102,6 +113,8 @@ function PrivateRouter:forward4 (p)
       link.transmit(route, p)
    else
       packet.free(p)
+      counter.add(self.shm.rxerrors)
+      counter.add(self.shm.route_errors)
    end
 end
 
@@ -111,6 +124,12 @@ PublicRouter = {
    config = {
       routes = {required=true},
       node_ip4 = {required=true}
+   },
+   shm = {
+      rxerrors = {counter},
+      ethertype_errors = {counter},
+      protocol_errors = {counter},
+      route_errors = {counter},
    }
 }
 
@@ -165,6 +184,8 @@ function PublicRouter:push ()
          arp_cursor = arp_cursor + 1
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.ethertype_errors)
       end
    end
 
@@ -181,6 +202,8 @@ function PublicRouter:push ()
          protocol_cursor = protocol_cursor + 1
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.protocol_errors)
       end
    end
 
@@ -195,6 +218,8 @@ function PublicRouter:push ()
          new_cursor = new_cursor + 1
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.protocol_errors)
       end
    end
    fwd4_cursor = new_cursor
@@ -223,6 +248,8 @@ function PublicRouter:forward4 (p)
       link.transmit(route, packet.shiftleft(p, ipv4:sizeof()))
    else
       packet.free(p)
+      counter.add(self.shm.rxerrors)
+      counter.add(self.shm.route_errors)
    end
 end
 
