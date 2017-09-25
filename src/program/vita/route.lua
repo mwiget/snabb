@@ -70,7 +70,7 @@ function PrivateRouter:push ()
    for i = 0, fwd4_cursor - 1 do
       local p = fwd4_packets[i]
       local ip4 = self.ip4:new_from_mem(p.data, ipv4:sizeof())
-      if ip4 and ip4:ttl() > 1 then
+      if ip4 and ip4:checksum_ok() and ip4:ttl() > 1 then
          ip4:ttl(ip4:ttl() - 1)
          ip4:checksum()
          fwd4_packets[new_cursor] = p
@@ -188,7 +188,7 @@ function PublicRouter:push ()
    for i = 0, fwd4_cursor - 1 do
       local p = fwd4_packets[i]
       local ip4 = self.ip4:new_from_mem(p.data, ipv4:sizeof())
-      if ip4:ttl() > 1 then
+      if ip4:checksum_ok() and ip4:ttl() > 1 then
          ip4:ttl(ip4:ttl() - 1)
          ip4:checksum()
          fwd4_packets[new_cursor] = p
