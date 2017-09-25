@@ -93,15 +93,15 @@ function PrivateRouter:push ()
    local fwd4_list = lq.filter(is_ip4, eth_list, fwd4_list)
    fwd4_list = lq.map(eth_strip, fwd4_list)
    fwd4_list = lq.filter(ip4_size, fwd4_list)
-   for _, i in lq.entries(fwd4_list) do
-      self:forward4(lq.get(i, fwd4_list))
+   for _, p in lq.ipairs(fwd4_list) do
+      self:forward4(p)
    end
 
    local arp_output = self.output.arp
    local arp_list = lq.filter(is_arp, eth_list, arp_list)
    arp_list = lq.map(eth_strip, arp_list)
-   for _, i in lq.entries(arp_list) do
-      link.transmit(arp_output, lq.get(i, arp_list))
+   for _, p in lq.ipairs(arp_list) do
+      link.transmit(arp_output, p)
    end
 end
 
@@ -174,22 +174,22 @@ function PublicRouter:push ()
    ip4_list = lq.filter(ip4_size, ip4_list)
 
    local fwd4_list = lq.filter(is_esp4, ip4_list, fwd4_list)
-   for _, i in lq.entries(fwd4_list) do
-      self:forward4(lq.get(i, fwd4_list))
+   for _, p in lq.ipairs(fwd4_list) do
+      self:forward4(p)
    end
 
    local protocol_output = self.output.protocol
    local protocol_list = lq.filter(is_protocol, ip4_list, protocol_list)
-   for _, i in lq.entries(protocol_list) do
-      link.transmit(protocol_output, lq.get(i, protocol_list))
+   for _, p in lq.ipairs(protocol_list) do
+      link.transmit(protocol_output, p)
    end
 
 
    local arp_output = self.output.arp
    local arp_list = lq.filter(is_arp, eth_list, arp_list)
    arp_list = lq.map(eth_strip, arp_list)
-   for _, i in lq.entries(arp_list) do
-      link.transmit(arp_output, lq.get(i, arp_list))
+   for _, p in lq.ipairs(arp_list) do
+      link.transmit(arp_output, p)
    end
 end
 
