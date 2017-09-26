@@ -3,6 +3,7 @@
 module(...,package.seeall)
 
 local counter = require("core.counter")
+local lib = require("core.lib")
 local ethernet = require("lib.protocol.ethernet")
 local arp = require("lib.protocol.arp")
 local arp_ipv4 = require("lib.protocol.arp_ipv4")
@@ -70,6 +71,7 @@ function NextHop4:new (conf)
 
    -- Initially, we don’t know the hardware address of our next hop
    o.connected = false
+   o.connect_interval = lib.throttle(5)
 
    return setmetatable(o, {__index = NextHop4})
 end
@@ -92,6 +94,20 @@ end
 function NextHop4:push ()
    local output = self.output.output
 
+   if self.connected then
+      -- Forward packets to next hop
+      for _, input in ipairs(self.forward) do
+         for _=1,link.nreadable(input) do
+            link.transmit(output, self:encapsulate(link.receive(input), 0x0800))
+         end
+      end
+
+   elseif self.connect_interval() then
+      -- Send periodic ARP requests if not connected
+      link.transmit(output, self:arp_request(self.nexthop_ip4))
+      counter.add(self.shm.arp_requests)
+   end
+
    -- Handle incoming ARP requests and replies
    local arp_input = self.input.arp
    for _=1,link.nreadable(arp_input) do
@@ -102,20 +118,6 @@ function NextHop4:push ()
          link.transmit(output, reply)
       else
          packet.free(p)
-      end
-   end
-
-   -- Sent ARP request if not connected
-   if not self.connected then
-      link.transmit(output, self:arp_request(self.nexthop_ip4))
-      counter.add(self.shm.arp_requests)
-      return
-   end
-
-   -- Forward packets to next hop
-   for _, input in ipairs(self.forward) do
-      for _=1,link.nreadable(input) do
-         link.transmit(output, self:encapsulate(link.receive(input), 0x0800))
       end
    end
 end
