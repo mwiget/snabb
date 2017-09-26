@@ -2,6 +2,7 @@
 
 module(...,package.seeall)
 
+local counter = require("core.counter")
 local esp = require("lib.ipsec.esp")
 local ipv4 = require("lib.protocol.ipv4")
 
@@ -31,10 +32,10 @@ function Encapsulate:push ()
    local output, sa = self.output.output, self.sa
    local input4 = self.input.input4
    for _=1,link.nreadable(input4) do
-      local p = link.receive(input4)
-      local p_enc = sa:encapsulate_tunnel(p, NextHeaderIPv4)
-      if p_enc then link.transmit(output, p_enc)
-      else packet.free(p) end
+      link.transmit(
+         output,
+         sa:encapsulate_tunnel(link.receive(input4), NextHeaderIPv4)
+      )
    end
 end
 
@@ -50,6 +51,11 @@ Decapsulate = {
       resync_threshold = {},
       resync_attempts = {},
       auditing = {}
+   },
+   shm = {
+      rxerrors = {counter},
+      protocol_errors = {counter},
+      decrypt_errors = {counter}
    }
 }
 
@@ -65,7 +71,13 @@ function Decapsulate:push ()
       local p, next_header = sa:decapsulate_tunnel(p_enc)
       if p and next_header == NextHeaderIPv4 then
          link.transmit(output4, p)
+      elseif p then
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.protocol_errors)
+         packet.free(p)
       else
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.decrypt_errors)
          packet.free(p_enc)
       end
    end
@@ -93,17 +105,17 @@ function Tunnel4:new (conf)
    return setmetatable(o, {__index = Tunnel4})
 end
 
+function Tunnel4:push ()
+   local input, output = self.input.input, self.output.output
+   for _=1,link.nreadable(input) do
+      link.transmit(output, self:encapsulate(link.receive(input)))
+   end
+end
+
 function Tunnel4:encapsulate (p)
    p = packet.prepend(p, self.ip_template:header(), ipv4:sizeof())
    self.ip:new_from_mem(p.data, ipv4:sizeof())
    self.ip:total_length(p.length)
    self.ip:checksum()
    return p
-end
-
-function Tunnel4:push ()
-   local input, output = self.input.input, self.output.output
-   for _=1,link.nreadable(input) do
-      link.transmit(output, self:encapsulate(link.receive(input)))
-   end
 end

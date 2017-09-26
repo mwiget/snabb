@@ -14,10 +14,11 @@ local Transmitter = require("apps.interlink.transmitter")
 local C = require("ffi").C
 
 local confspec = {
+   node_mac = {required=true},
    node_ip4 = {required=true},
    routes = {required=true},
-   public_nexthop = {required=true},  -- { mac(MAC) }
-   private_nexthop = {required=true}, -- { mac(MAC) }
+   public_nexthop_ip4 = {required=true},
+   private_nexthop_ip4 = {required=true},
    esp_keyfile = {default="group/esp_ephemeral_keys"},
    dsp_keyfile = {default="group/dsp_ephemeral_keys"},
    negotiation_ttl = {},
@@ -29,20 +30,30 @@ function configure_router (conf)
    local c = config.new()
 
    config.app(c, "PrivateRouter", route.PrivateRouter, {routes=conf.routes})
-   config.app(c, "PrivateNextHop", nexthop.NextHop4, conf.private_nexthop)
+   config.app(c, "PrivateNextHop", nexthop.NextHop4, {
+                 node_mac = conf.node_mac,
+                 node_ip4 = conf.node_ip4,
+                 nexthop_ip4 = conf.private_nexthop_ip4
+   })
+   config.link(c, "PrivateRouter.arp -> PrivateNextHop.arp")
 
    config.app(c, "PublicRouter", route.PublicRouter, {
                  routes = conf.routes,
                  node_ip4 = conf.node_ip4
    })
-   config.app(c, "PublicNextHop", nexthop.NextHop4, conf.public_nexthop)
+   config.app(c, "PublicNextHop", nexthop.NextHop4, {
+                 node_mac = conf.node_mac,
+                 node_ip4 = conf.node_ip4,
+                 nexthop_ip4 = conf.public_nexthop_ip4
+   })
+   config.link(c, "PublicRouter.arp -> PublicNextHop.arp")
 
    config.app(c, "KeyExchange", exchange.KeyManager, {
                  node_ip4 = conf.node_ip4,
                  routes = conf.routes,
                  esp_keyfile = conf.esp_keyfile,
                  dsp_keyfile = conf.dsp_keyfile,
-                 negotation_ttl = conf.negotation_ttl,
+                 negotiation_ttl = conf.negotiation_ttl,
                  sa_ttl = conf.sa_ttl
    })
    config.link(c, "PublicRouter.protocol -> KeyExchange.input")
