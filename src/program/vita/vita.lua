@@ -25,9 +25,9 @@ local confspec = {
    sa_ttl = {}
 }
 
-function configure_router (conf)
+function configure_private_router (conf, append)
    conf = lib.parse(conf, confspec)
-   local c = config.new()
+   local c = append or config.new()
 
    config.app(c, "PrivateRouter", route.PrivateRouter, {routes=conf.routes})
    config.app(c, "PrivateNextHop", nexthop.NextHop4, {
@@ -36,6 +36,31 @@ function configure_router (conf)
                  nexthop_ip4 = conf.private_nexthop_ip4
    })
    config.link(c, "PrivateRouter.arp -> PrivateNextHop.arp")
+
+   for _, route in ipairs(conf.routes) do
+      local private_in = "PrivateRouter."..config.link_name(route.net_cidr4)
+      local ESP_in = "ESP_"..config.link_name(route.gw_ip4).."_in"
+      config.app(c, ESP_in, Transmitter,
+                 {name="group/interlink/"..ESP_in, create=true})
+      config.link(c, private_in.." -> "..ESP_in..".input")
+
+      local private_out = "PrivateNextHop."..config.link_name(route.net_cidr4)
+      local DSP_out = "DSP_"..config.link_name(route.gw_ip4).."_out"
+      config.app(c, DSP_out, Receiver,
+                 {name="group/interlink/"..DSP_out, create=true})
+      config.link(c, DSP_out..".output -> "..private_out)
+   end
+
+   local private_links = {
+      input = "PrivateRouter.input",
+      output = "PrivateNextHop.output"
+   }
+   return c, private_links
+end
+
+function configure_public_router (conf, append)
+   conf = lib.parse(conf, confspec)
+   local c = append or config.new()
 
    config.app(c, "PublicRouter", route.PublicRouter, {
                  routes = conf.routes,
@@ -60,41 +85,39 @@ function configure_router (conf)
    config.link(c, "KeyExchange.output -> PublicNextHop.protocol")
 
    for _, route in ipairs(conf.routes) do
-      local private_in = "PrivateRouter."..config.link_name(route.net_cidr4)
+      local public_in = "PublicRouter."..config.link_name(route.gw_ip4)
+      local DSP_in = "DSP_"..config.link_name(route.gw_ip4).."_in"
+      config.app(c, DSP_in, Transmitter,
+                 {name="group/interlink/"..DSP_in, create=true})
+      config.link(c, public_in.." -> "..DSP_in..".input")
+
       local public_out = "PublicNextHop."..config.link_name(route.gw_ip4)
-      local ESP_in = "ESP_"..config.link_name(route.gw_ip4).."_in"
       local ESP_out = "ESP_"..config.link_name(route.gw_ip4).."_out"
       local Tunnel = "Tunnel_"..config.link_name(route.gw_ip4)
-      config.app(c, ESP_in, Transmitter,
-                 {name="group/interlink/"..ESP_in, create=true})
       config.app(c, ESP_out, Receiver,
                  {name="group/interlink/"..ESP_out, create=true})
       config.app(c, Tunnel, tunnel.Tunnel4,
                  {src=conf.node_ip4, dst=route.gw_ip4})
-      config.link(c, private_in.." -> "..ESP_in..".input")
       config.link(c, ESP_out..".output -> "..Tunnel..".input")
       config.link(c, Tunnel..".output -> "..public_out)
-      local public_in = "PublicRouter."..config.link_name(route.gw_ip4)
-      local private_out = "PrivateNextHop."..config.link_name(route.net_cidr4)
-      local DSP_in = "DSP_"..config.link_name(route.gw_ip4).."_in"
-      local DSP_out = "DSP_"..config.link_name(route.gw_ip4).."_out"
-      config.app(c, DSP_in, Transmitter,
-                 {name="group/interlink/"..DSP_in, create=true})
-      config.app(c, DSP_out, Receiver,
-                 {name="group/interlink/"..DSP_out, create=true})
-      config.link(c, public_in.." -> "..DSP_in..".input")
-      config.link(c, DSP_out..".output -> "..private_out)
    end
 
-   local private_links = {
-      input = "PrivateRouter.input",
-      output = "PrivateNextHop.output"
-   }
    local public_links = {
       input = "PublicRouter.input",
       output = "PublicNextHop.output"
    }
-   return c, private_links, public_links
+
+   return c, public_links
+end
+
+function public_router_loopback_worker (confpath, reconf_interval)
+   local function configure_public_router_loopback (conf)
+      local c, public = configure_public_router(conf)
+      config.link(c, public.output.." -> "..public.input)
+      return c
+   end
+   engine.log = true
+   listen_confpath(confpath, configure_public_router_loopback, reconf_interval)
 end
 
 

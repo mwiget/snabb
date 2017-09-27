@@ -1,5 +1,6 @@
 -- Use of this source code is governed by the Apache 2.0 license; see COPYING.
 
+local shm = require("core.shm")
 local lib = require("core.lib")
 local worker = require("core.worker")
 local counter = require("core.counter")
@@ -36,8 +37,8 @@ function test_packets (pktsize)
 end
 
 
-local c, private, public = vita.configure_router{
-   node_mac = "52:54:00:00:00:00",
+local conf = {
+  node_mac = "52:54:00:00:00:00",
    node_ip4 = "192.168.10.1",
    private_nexthop_ip4 = "192.168.10.1",
    public_nexthop_ip4 = "192.168.10.1",
@@ -51,7 +52,7 @@ local c, private, public = vita.configure_router{
    negotiation_ttl = 1
 }
 
-config.link(c, public.output.." -> "..public.input)
+local c, private = vita.configure_private_router(conf, config.new())
 
 config.app(c, "bridge", basic_apps.Join)
 config.link(c, "bridge.output -> "..private.input)
@@ -65,6 +66,14 @@ config.link(c, "sieve.output -> bridge.arp")
 
 engine.log = true
 engine.configure(c)
+
+local confpath = shm.root.."/"..shm.resolve("group/testconf")
+worker.start(
+   "PublicRouter",
+   ([[require("program.vita.vita").public_router_loopback_worker(%q)]])
+      :format(confpath)
+)
+lib.store_conf(confpath, conf)
 
 worker.start("ESP", [[require("program.vita.vita").esp_worker()]])
 worker.start("DSP", [[require("program.vita.vita").dsp_worker()]])
