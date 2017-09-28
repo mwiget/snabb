@@ -11,6 +11,8 @@ local PcapFilter = require("apps.packet_filter.pcap_filter").PcapFilter
 local ethernet= require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local datagram = require("lib.protocol.datagram")
+local numa = require("lib.numa")
+local S = require("syscall")
 
 -- sudo ./snabb snsh program/vita/test.lua [<pktsize>|IMIX] [<npackets>]
 -- default is 10 million packets at IMIX                (-:
@@ -34,6 +36,14 @@ function test_packets (pktsize)
       packets[#packets+1] = d:packet()
    end
    return packets
+end
+
+
+if numa.has_numa() then
+   -- Bind to current NUMA node
+   local node = S.getcpu().node
+   print("NUMA: binding to CPU node "..node)
+   numa.bind_to_numa_node(node)
 end
 
 
