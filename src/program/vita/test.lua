@@ -67,6 +67,8 @@ config.link(c, "sieve.output -> bridge.arp")
 engine.log = true
 engine.configure(c)
 
+worker.set_exit_on_worker_death(true)
+
 local confpath = shm.root.."/"..shm.resolve("group/testconf")
 worker.start(
    "PublicRouter",
