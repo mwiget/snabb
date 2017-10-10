@@ -2,6 +2,7 @@
 
 module(...,package.seeall)
 
+local counter = require("core.counter")
 local ethernet = require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local arp = require("lib.protocol.arp")
@@ -11,12 +12,19 @@ local lpm = require("lib.lpm.lpm4_248").LPM4_248
 local ctable = require("lib.ctable")
 local ffi = require("ffi")
 
+
 -- route := { net_cidr4=(CIDR4), gw_ip4=(IPv4), preshared_key=(KEY) }
 
 PrivateRouter = {
    name = "PrivateRouter",
    config = {
       routes = {required=true}
+   },
+   shm = {
+      rxerrors = {counter},
+      ethertype_errors = {counter},
+      protocol_errors = {counter},
+      route_errors = {counter}
    }
 }
 
@@ -62,8 +70,27 @@ function PrivateRouter:push ()
          arp_cursor = arp_cursor + 1
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.ethertype_errors)
       end
    end
+
+   local new_cursor = 0
+   for i = 0, fwd4_cursor - 1 do
+      local p = fwd4_packets[i]
+      local ip4 = self.ip4:new_from_mem(p.data, ipv4:sizeof())
+      if ip4 and ip4:checksum_ok() and ip4:ttl() > 1 then
+         ip4:ttl(ip4:ttl() - 1)
+         ip4:checksum()
+         fwd4_packets[new_cursor] = p
+         new_cursor = new_cursor + 1
+      else
+         packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.protocol_errors)
+      end
+   end
+   fwd4_cursor = new_cursor
 
    for i = 0, fwd4_cursor - 1 do
       self:forward4(fwd4_packets[i])
@@ -80,12 +107,14 @@ function PrivateRouter:find_route4 (dst)
 end
 
 function PrivateRouter:forward4 (p)
-   local ip4 = self.ip4:new_from_mem(p.data, p.length)
-   local route = ip4 and self:find_route4(ip4:dst())
+   self.ip4:new_from_mem(p.data, p.length)
+   local route = self:find_route4(self.ip4:dst())
    if route then
       link.transmit(route, p)
    else
       packet.free(p)
+      counter.add(self.shm.rxerrors)
+      counter.add(self.shm.route_errors)
    end
 end
 
@@ -95,6 +124,12 @@ PublicRouter = {
    config = {
       routes = {required=true},
       node_ip4 = {required=true}
+   },
+   shm = {
+      rxerrors = {counter},
+      ethertype_errors = {counter},
+      protocol_errors = {counter},
+      route_errors = {counter},
    }
 }
 
@@ -149,6 +184,8 @@ function PublicRouter:push ()
          arp_cursor = arp_cursor + 1
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.ethertype_errors)
       end
    end
 
@@ -165,8 +202,27 @@ function PublicRouter:push ()
          protocol_cursor = protocol_cursor + 1
       else
          packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.protocol_errors)
       end
    end
+
+   local new_cursor = 0
+   for i = 0, fwd4_cursor - 1 do
+      local p = fwd4_packets[i]
+      local ip4 = self.ip4:new_from_mem(p.data, ipv4:sizeof())
+      if ip4:checksum_ok() and ip4:ttl() > 1 then
+         ip4:ttl(ip4:ttl() - 1)
+         ip4:checksum()
+         fwd4_packets[new_cursor] = p
+         new_cursor = new_cursor + 1
+      else
+         packet.free(p)
+         counter.add(self.shm.rxerrors)
+         counter.add(self.shm.protocol_errors)
+      end
+   end
+   fwd4_cursor = new_cursor
 
    for i = 0, fwd4_cursor - 1 do
       self:forward4(fwd4_packets[i])
@@ -192,6 +248,8 @@ function PublicRouter:forward4 (p)
       link.transmit(route, packet.shiftleft(p, ipv4:sizeof()))
    else
       packet.free(p)
+      counter.add(self.shm.rxerrors)
+      counter.add(self.shm.route_errors)
    end
 end
 

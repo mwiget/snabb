@@ -1,7 +1,9 @@
 -- Use of this source code is governed by the Apache 2.0 license; see COPYING.
 
+local shm = require("core.shm")
 local lib = require("core.lib")
 local worker = require("core.worker")
+local counter = require("core.counter")
 local vita = require("program.vita.vita")
 local basic_apps = require("apps.basic.basic_apps")
 local Synth = require("apps.test.synth").Synth
@@ -9,6 +11,8 @@ local PcapFilter = require("apps.packet_filter.pcap_filter").PcapFilter
 local ethernet= require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local datagram = require("lib.protocol.datagram")
+local numa = require("lib.numa")
+local S = require("syscall")
 
 -- sudo ./snabb snsh program/vita/test.lua [<pktsize>|IMIX] [<npackets>]
 -- default is 10 million packets at IMIX                (-:
@@ -24,7 +28,8 @@ function test_packets (pktsize)
       assert(payload_size >= 0, "Negative payload_size :-(")
       local d = datagram:new(packet.resize(packet.allocate(), payload_size))
       d:push(ipv4:new{ src = ipv4:pton("192.168.10.100"),
-                       dst = ipv4:pton("192.168.10.200") })
+                       dst = ipv4:pton("192.168.10.200"),
+                       ttl = 64 })
       d:push(ethernet:new{ src = ethernet:pton("52:54:00:00:00:00"),
                            dst = ethernet:pton("52:54:00:00:00:00"),
                            type = 0x0800 })
@@ -34,12 +39,12 @@ function test_packets (pktsize)
 end
 
 
-local c, private, public = vita.configure_router{
+local conf = {
    private_interface = { macaddr = "52:54:00:00:00:00" },
    public_interface = { macaddr = "52:54:00:00:00:FF" },
+   node_ip4 = "192.168.10.1",
    private_nexthop_ip4 = "192.168.10.1",
    public_nexthop_ip4 = "192.168.10.1",
-   node_ip4 = "192.168.10.1",
    routes = {
       {
          net_cidr4 = "192.168.10.0/24",
@@ -50,7 +55,10 @@ local c, private, public = vita.configure_router{
    negotiation_ttl = 1
 }
 
-config.link(c, public.output.." -> "..public.input)
+local current_node = S.getcpu().node
+vita.cpubind(nil, current_node)
+
+local c, private = vita.configure_private_router(conf, config.new())
 
 config.app(c, "bridge", basic_apps.Join)
 config.link(c, "bridge.output -> "..private.input)
@@ -65,25 +73,40 @@ config.link(c, "sieve.output -> bridge.arp")
 engine.log = true
 engine.configure(c)
 
-worker.start("ESP", [[require("program.vita.vita").esp_worker()]])
-worker.start("DSP", [[require("program.vita.vita").dsp_worker()]])
+worker.set_exit_on_worker_death(true)
+
+local confpath = shm.root.."/"..shm.resolve("group/testconf")
+lib.store_conf(confpath, conf)
+
+worker.start(
+   "PublicRouterLoopback",
+   ([[require("program.vita.vita").public_router_loopback_worker(%q, %s, %s)]])
+      :format(confpath, nil, current_node)
+)
+
+worker.start("ESP", ([[require("program.vita.vita").esp_worker(%s, %s)]])
+             :format(nil, current_node))
+worker.start("DSP", ([[require("program.vita.vita").dsp_worker(%s, %s)]])
+                :format(nil, current_node))
 
 
 -- adapted from snabbnfv traffic
 
 local npackets = tonumber(main.parameters[2]) or 10e6
 local get_monotonic_time = require("ffi").C.get_monotonic_time
-local counter = require("core.counter")
 local start, packets, bytes = 0, 0, 0
+local dest_link = engine.app_table.sieve.input.input
 local function done ()
-   local input = link.stats(engine.app_table.sieve.input.input)
-   if start == 0 and input.txpackets > 0 then
+   local txpackets = counter.read(dest_link.stats.txpackets)
+   local txbytes = counter.read(dest_link.stats.txbytes)
+   if start == 0 and txpackets > 100 then
       -- started receiving, record time and packet count
-      packets = input.txpackets
-      bytes = input.txbytes
+      print("TEST START")
+      packets = txpackets
+      bytes = txbytes
       start = get_monotonic_time()
    end
-   return input.txpackets - packets >= npackets
+   return txpackets - packets >= npackets
 end
 
 engine.main({done=done, report={showlinks=true}})
@@ -91,9 +114,8 @@ local finish = get_monotonic_time()
 
 local runtime = finish - start
 local breaths = tonumber(counter.read(engine.breaths))
-local input = link.stats(engine.app_table.sieve.input.input)
-packets = input.txpackets - packets
-bytes = input.txbytes - bytes
+packets = tonumber(counter.read(dest_link.stats.txpackets) - packets)
+bytes = tonumber(counter.read(dest_link.stats.txbytes) - bytes)
 
 for w, s in pairs(worker.status()) do
    print(("worker %s: pid=%s alive=%s status=%s"):format(
