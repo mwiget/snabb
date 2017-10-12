@@ -101,6 +101,7 @@ end
 
 types.union = unimplemented('union')
 
+--[[ Disable special type support.
 types['ipv4-address'] = {
    ctype = 'uint32_t',
    parse = function(str, what) return util.ipv4_pton(str) end,
@@ -144,6 +145,7 @@ types['ipv6-prefix'] = {
    end,
    tostring = function(val) return ipv6:ntop(val[1])..'/'..tostring(val[2]) end
 }
+]]--
 
 function selftest()
    assert(types['uint8'].parse('0') == 0)
