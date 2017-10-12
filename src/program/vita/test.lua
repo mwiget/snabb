@@ -12,6 +12,7 @@ local ethernet= require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local datagram = require("lib.protocol.datagram")
 local numa = require("lib.numa")
+local yang = require("lib.yang.yang")
 local S = require("syscall")
 
 -- sudo ./snabb snsh program/vita/test.lua [<pktsize>|IMIX] [<npackets>]
@@ -45,8 +46,8 @@ local conf = {
    node_ip4 = "192.168.10.1",
    private_nexthop_ip4 = "192.168.10.1",
    public_nexthop_ip4 = "192.168.10.1",
-   routes = {
-      {
+   route = {
+      loopback = {
          net_cidr4 = "192.168.10.0/24",
          gw_ip4 = "192.168.10.1",
          preshared_key = string.rep("00", 512)
@@ -76,7 +77,11 @@ engine.configure(c)
 worker.set_exit_on_worker_death(true)
 
 local confpath = shm.root.."/"..shm.resolve("group/testconf")
-lib.store_conf(confpath, conf)
+do
+   local f = assert(io.open(confpath, "w"), "Unable to open file: "..confpath)
+   yang.print_data_for_schema_by_name('vita-esp-gateway', conf, f)
+   f:close()
+end
 
 worker.start(
    "PublicRouterLoopback",

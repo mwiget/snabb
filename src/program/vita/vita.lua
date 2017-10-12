@@ -14,6 +14,7 @@ local Receiver = require("apps.interlink.receiver")
 local Transmitter = require("apps.interlink.transmitter")
 local intel_mp = require("apps.intel_mp.intel_mp")
 local numa = require("lib.numa")
+local yang = require("lib.yang.yang")
 local C = require("ffi").C
 local usage = require("program.vita.README_inc")
 
@@ -23,7 +24,7 @@ local confspec = {
    node_ip4 = {required=true},
    public_nexthop_ip4 = {required=true},
    private_nexthop_ip4 = {required=true},
-   routes = {required=true},
+   route = {required=true},
    negotiation_ttl = {},
    sa_ttl = {}
 }
@@ -78,7 +79,7 @@ function configure_private_router (conf, append)
    conf = lib.parse(conf, confspec)
    local c = append or config.new()
 
-   config.app(c, "PrivateRouter", route.PrivateRouter, {routes=conf.routes})
+   config.app(c, "PrivateRouter", route.PrivateRouter, {routes=conf.route})
    config.app(c, "PrivateNextHop", nexthop.NextHop4, {
                  node_mac = conf.private_interface.macaddr,
                  node_ip4 = conf.node_ip4,
@@ -86,7 +87,7 @@ function configure_private_router (conf, append)
    })
    config.link(c, "PrivateRouter.arp -> PrivateNextHop.arp")
 
-   for _, route in ipairs(conf.routes) do
+   for _, route in pairs(conf.route) do
       local private_in = "PrivateRouter."..config.link_name(route.net_cidr4)
       local ESP_in = "ESP_"..config.link_name(route.gw_ip4).."_in"
       config.app(c, ESP_in, Transmitter,
@@ -112,7 +113,7 @@ function configure_public_router (conf, append)
    local c = append or config.new()
 
    config.app(c, "PublicRouter", route.PublicRouter, {
-                 routes = conf.routes,
+                 routes = conf.route,
                  node_ip4 = conf.node_ip4
    })
    config.app(c, "PublicNextHop", nexthop.NextHop4, {
@@ -124,7 +125,7 @@ function configure_public_router (conf, append)
 
    config.app(c, "KeyExchange", exchange.KeyManager, {
                  node_ip4 = conf.node_ip4,
-                 routes = conf.routes,
+                 routes = conf.route,
                  esp_keyfile = esp_keyfile,
                  dsp_keyfile = dsp_keyfile,
                  negotiation_ttl = conf.negotiation_ttl,
@@ -133,7 +134,7 @@ function configure_public_router (conf, append)
    config.link(c, "PublicRouter.protocol -> KeyExchange.input")
    config.link(c, "KeyExchange.output -> PublicNextHop.protocol")
 
-   for _, route in ipairs(conf.routes) do
+   for _, route in pairs(conf.route) do
       local public_in = "PublicRouter."..config.link_name(route.gw_ip4)
       local DSP_in = "DSP_"..config.link_name(route.gw_ip4).."_in"
       config.app(c, DSP_in, Transmitter,
@@ -201,13 +202,21 @@ end
 function private_port_worker (confpath, cpu, memnode)
    cpubind(cpu, memnode)
    engine.log = true
-   listen_confpath(confpath, configure_private_router_with_nic)
+   listen_confpath(
+      'vita-esp-gateway',
+      confpath,
+      configure_private_router_with_nic
+   )
 end
 
 function public_port_worker (confpath, cpu, memnode)
    cpubind(cpu, memnode)
    engine.log = true
-   listen_confpath(confpath, configure_public_router_with_nic)
+   listen_confpath(
+      'vita-esp-gateway',
+      confpath,
+      configure_public_router_with_nic
+   )
 end
 
 function public_router_loopback_worker (confpath, cpu, memnode)
@@ -218,7 +227,11 @@ function public_router_loopback_worker (confpath, cpu, memnode)
    end
    cpubind(cpu, memnode)
    engine.log = true
-   listen_confpath(confpath, configure_public_router_loopback)
+   listen_confpath(
+      'vita-esp-gateway',
+      confpath,
+      configure_public_router_loopback
+   )
 end
 
 
@@ -227,7 +240,7 @@ end
 function configure_esp (ephemeral_keys)
    local c = config.new()
 
-   for _, route in ipairs(ephemeral_keys) do
+   for _, route in pairs(ephemeral_keys.route) do
       -- Configure interlink receiver/transmitter for route
       local ESP_in = "ESP_"..config.link_name(route.gw_ip4).."_in"
       local ESP_out = "ESP_"..config.link_name(route.gw_ip4).."_out"
@@ -248,7 +261,7 @@ end
 function configure_dsp (ephemeral_keys)
    local c = config.new()
 
-   for _, route in ipairs(ephemeral_keys) do
+   for _, route in pairs(ephemeral_keys.route) do
       -- Configure interlink receiver/transmitter for route
       local DSP_in = "DSP_"..config.link_name(route.gw_ip4).."_in"
       local DSP_out = "DSP_"..config.link_name(route.gw_ip4).."_out"
@@ -269,17 +282,25 @@ end
 function esp_worker (cpu, memnode)
    cpubind(cpu, memnode)
    engine.log = true
-   listen_confpath(shm.root.."/"..shm.resolve(esp_keyfile), configure_esp)
+   listen_confpath(
+      'vita-ephemeral-keys',
+      shm.root.."/"..shm.resolve(esp_keyfile),
+      configure_esp
+   )
 end
 
 function dsp_worker (cpu, memnode)
    cpubind(cpu, memnode)
    engine.log = true
-   listen_confpath(shm.root.."/"..shm.resolve(dsp_keyfile), configure_dsp)
+   listen_confpath(
+      'vita-ephemeral-keys',
+      shm.root.."/"..shm.resolve(dsp_keyfile),
+      configure_dsp
+   )
 end
 
 
-function listen_confpath (confpath, loader, interval)
+function listen_confpath (schema_name, confpath, loader, interval)
    interval = interval or 1e9
 
    local mtime = 0
@@ -292,7 +313,11 @@ function listen_confpath (confpath, loader, interval)
    ))
 
    local function run_loader ()
-      return loader(lib.load_conf(confpath))
+      return loader(yang.load_data_for_schema_by_name(
+         schema_name,
+         lib.readfile(confpath, "a*"),
+         confpath
+      ))
    end
 
    while true do

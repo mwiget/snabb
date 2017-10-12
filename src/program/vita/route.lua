@@ -36,7 +36,7 @@ function PrivateRouter:new (conf)
       fwd4_packets = packet_buffer(),
       arp_packets = packet_buffer()
    }
-   for _, route in ipairs(conf.routes) do
+   for _, route in pairs(conf.routes) do
       o.routes[#o.routes+1] = {
          net_cidr4 = assert(route.net_cidr4, "Missing net_cidr4"),
          link = nil
@@ -143,7 +143,7 @@ function PublicRouter:new (conf)
       protocol_packets = packet_buffer(),
       arp_packets = packet_buffer()
    }
-   for _, route in ipairs(conf.routes) do
+   for _, route in pairs(conf.routes) do
       o.routes[#o.routes+1] = {
          gw_ip4 = assert(route.gw_ip4, "Missing gw_ip4"),
          link = nil
