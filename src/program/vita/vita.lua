@@ -17,6 +17,7 @@ local numa = require("lib.numa")
 local yang = require("lib.yang.yang")
 local C = require("ffi").C
 local usage = require("program.vita.README_inc")
+local confighelp = require("program.vita.README_config_inc")
 
 local confspec = {
    private_interface = {required=true},
@@ -33,12 +34,25 @@ local esp_keyfile = "group/esp_ephemeral_keys"
 local dsp_keyfile = "group/dsp_ephemeral_keys"
 
 function run (args)
-   local opts, opt = {help = "h", cpu = "c", membind = "m"}, {}
-   local cpus, memnode = {}, nil
+   local long_opt = {
+      help = "h",
+      ["config-help"] = "H",
+      ["config-test"] = "t",
+      cpu = "c",
+      membind = "m"
+   }
+
+   local opt, conftest, cpus, memnode = {}, false, {}, nil
 
    local function exit_usage (status) print(usage) main.exit(status) end
 
    function opt.h () exit_usage(0) end
+
+   function opt.H () print(confighelp) main.exit(0) end
+
+   function opt.t ()
+      conftest = true
+   end
 
    function opt.c (arg)
       for cpu in arg:gmatch('%s*([0-9]+),*') do
@@ -50,10 +64,16 @@ function run (args)
       memnode = tonumber(arg) or exit_usage(1)
    end
 
-   args = lib.dogetopt(args, opt, "hc:m:", opts)
+   args = lib.dogetopt(args, opt, "hHtc:m:", long_opt)
 
    if #args < 1 then print(usage) main.exit() end
    local confpath = args[1]
+
+   if conftest then
+      local success, error = pcall(load_config, 'vita-esp-gateway', confpath)
+      if success then main.exit(0)
+      else print(error) main.exit(1) end
+   end
 
    -- “link” with worker processes
    worker.set_exit_on_worker_death(true)
@@ -299,6 +319,11 @@ function dsp_worker (cpu, memnode)
    )
 end
 
+function load_config (schema_name, confpath)
+   return yang.load_data_for_schema_by_name(schema_name,
+                                            lib.readfile(confpath, "a*"),
+                                            confpath)
+end
 
 function listen_confpath (schema_name, confpath, loader, interval)
    interval = interval or 1e9
@@ -313,11 +338,7 @@ function listen_confpath (schema_name, confpath, loader, interval)
    ))
 
    local function run_loader ()
-      return loader(yang.load_data_for_schema_by_name(
-         schema_name,
-         lib.readfile(confpath, "a*"),
-         confpath
-      ))
+      return loader(load_config(schema_name, confpath))
    end
 
    while true do

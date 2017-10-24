@@ -2,7 +2,11 @@ Usage:
   vita [OPTIONS] <confpath>
 
   -h, --help
-                             Print usage information.
+                             Print usage information and exit.
+  -H, --config-help
+                             Print configuration help and exit.
+  -t  --config-test
+                             Validate configuration and exit.
   -c, --cpu <cpus>
                              Bind the four Vita processes to <cpus>. Must be a
                              comma-separated list of CPU identifiers.
