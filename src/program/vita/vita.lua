@@ -22,9 +22,10 @@ local confighelp = require("program.vita.README_config_inc")
 local confspec = {
    private_interface = {required=true},
    public_interface = {required=true},
-   node_ip4 = {required=true},
-   public_nexthop_ip4 = {required=true},
+   private_ip4 = {required=true},
+   public_ip4 = {required=true},
    private_nexthop_ip4 = {required=true},
+   public_nexthop_ip4 = {required=true},
    route = {required=true},
    negotiation_ttl = {},
    sa_ttl = {}
@@ -102,7 +103,7 @@ function configure_private_router (conf, append)
    config.app(c, "PrivateRouter", route.PrivateRouter, {routes=conf.route})
    config.app(c, "PrivateNextHop", nexthop.NextHop4, {
                  node_mac = conf.private_interface.macaddr,
-                 node_ip4 = conf.node_ip4,
+                 node_ip4 = conf.private_ip4,
                  nexthop_ip4 = conf.private_nexthop_ip4
    })
    config.link(c, "PrivateRouter.arp -> PrivateNextHop.arp")
@@ -134,17 +135,17 @@ function configure_public_router (conf, append)
 
    config.app(c, "PublicRouter", route.PublicRouter, {
                  routes = conf.route,
-                 node_ip4 = conf.node_ip4
+                 node_ip4 = conf.public_ip4
    })
    config.app(c, "PublicNextHop", nexthop.NextHop4, {
                  node_mac = conf.public_interface.macaddr,
-                 node_ip4 = conf.node_ip4,
+                 node_ip4 = conf.public_ip4,
                  nexthop_ip4 = conf.public_nexthop_ip4
    })
    config.link(c, "PublicRouter.arp -> PublicNextHop.arp")
 
    config.app(c, "KeyExchange", exchange.KeyManager, {
-                 node_ip4 = conf.node_ip4,
+                 node_ip4 = conf.public_ip4,
                  routes = conf.route,
                  esp_keyfile = esp_keyfile,
                  dsp_keyfile = dsp_keyfile,
@@ -167,7 +168,7 @@ function configure_public_router (conf, append)
       config.app(c, ESP_out, Receiver,
                  {name="group/interlink/"..ESP_out, create=true})
       config.app(c, Tunnel, tunnel.Tunnel4,
-                 {src=conf.node_ip4, dst=route.gw_ip4})
+                 {src=conf.public_ip4, dst=route.gw_ip4})
       config.link(c, ESP_out..".output -> "..Tunnel..".input")
       config.link(c, Tunnel..".output -> "..public_out)
    end

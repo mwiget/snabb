@@ -20,7 +20,8 @@ module vita-esp-gateway {
   container private_interface { uses interface; }
   container public_interface { uses interface; }
 
-  leaf node_ip4 { type inet:ipv4-address-no-zone; mandatory true; }
+  leaf private_ip4 { type inet:ipv4-address-no-zone; mandatory true; }
+  leaf public_ip4 { type inet:ipv4-address-no-zone; mandatory true; }
 
   leaf private_nexthop_ip4 { type inet:ipv4-address-no-zone; mandatory true; }
   leaf public_nexthop_ip4 { type inet:ipv4-address-no-zone; mandatory true; }
