@@ -116,7 +116,7 @@ function aes_128_gcm:decrypt (out_ptr, seq_low, seq_high, iv, ciphertext, length
                               u8_ptr(self.iv:header_ptr()),
                               u8_ptr(self.aad:header_ptr()), self.AAD_SIZE,
                               self.auth_buf, self.AUTH_SIZE)
-   return C.memcmp(self.auth_buf, ciphertext + length, self.AUTH_SIZE) == 0
+   return ASM.auth12_equal(self.auth_buf, ciphertext + length) == 0
 end
 
 
