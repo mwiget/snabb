@@ -840,9 +840,12 @@ function resolve(schema, features)
 end
 
 local primitive_types = {
-   ['ietf-inet-types']=set('ipv4-address', 'ipv6-address',
-                           'ipv4-prefix', 'ipv6-prefix'),
-   ['ietf-yang-types']=set('mac-address')
+-- Disable special types.
+--   ['ietf-inet-types']=set('ipv4-address', 'ipv6-address',
+--                           'ipv4-prefix', 'ipv6-prefix'),
+   ['ietf-inet-types']=set(),
+--   ['ietf-yang-types']=set('mac-address')
+   ['ietf-yang-types']=set()
 }
 
 -- NB: mutates schema in place!

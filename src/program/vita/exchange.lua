@@ -8,6 +8,7 @@ local shm = require("core.shm")
 local counter = require("core.counter")
 local lib = require("core.lib")
 local ipv4 = require("lib.protocol.ipv4")
+local yang = require("lib.yang.yang")
 local logger = lib.logger_new({ rate = 32, module = 'KeyManager' })
 
 PROTOCOL = 99 -- “Any private encryption scheme”
@@ -43,8 +44,9 @@ function KeyManager:new (conf)
       sa_ttl = conf.sa_ttl,
       ip = ipv4:new({})
    }
-   for _, route in ipairs(conf.routes) do
+   for id, route in pairs(conf.routes) do
       o.routes[#o.routes+1] = {
+         id = id,
          gw_ip4 = route.gw_ip4,
          gw_ip4n = ipv4:pton(route.gw_ip4), -- for fast compare
          preshared_key = lib.hexundump(route.preshared_key, 512),
@@ -224,36 +226,36 @@ function KeyManager:parse_request (request)
                             request.data + ipv4:sizeof() + request_t_length)
    -- TODO: authenticate request by verifying trailer.icv
 
-   local function hexdump (bytes, n)
-      local s = ""
-      for i = 0, n - 1 do s = s..("%02X"):format(bytes[i]) end
-      return s
-   end
-
    local body = ffi.cast(request_t_ptr_t, request.data + ipv4:sizeof())
    local sa = {
       mode = "aes-gcm-128-12",
       spi = lib.ntohl(body.spi),
-      key = hexdump(body.key, 16),
-      salt = hexdump(body.salt, 4)
+      key = lib.hexdump(ffi.string(body.key, 16)),
+      salt = lib.hexdump(ffi.string(body.salt, 4))
    }
 
    return route, sa
 end
 
+local function store_ephemeral_keys (path, keys)
+   local f = assert(io.open(path, "w"), "Unable to open file: "..path)
+   yang.print_data_for_schema_by_name('vita-ephemeral-keys', {route=keys}, f)
+   f:close()
+end
+
 -- ephemeral_keys := { { gw_ip4=(IPv4), [ sa=(SA) ] }, ... }
 function KeyManager:commit_ephemeral_keys ()
-   local esp_conf, dsp_conf = {}, {}
+   local esp_keys, dsp_keys = {}, {}
    for _, route in ipairs(self.routes) do
-      esp_conf[#esp_conf+1] = {
+      esp_keys[route.id] = {
          gw_ip4 = route.gw_ip4,
-         sa = (route.status == status.ready) and route.tx_sa
+         sa = (route.status == status.ready) and route.tx_sa or nil
       }
-      dsp_conf[#dsp_conf+1] = {
+      dsp_keys[route.id] = {
          gw_ip4 = route.gw_ip4,
-         sa = (route.status == status.ready) and route.rx_sa
+         sa = (route.status == status.ready) and route.rx_sa or nil
       }
    end
-   lib.store_conf(self.esp_keyfile, esp_conf)
-   lib.store_conf(self.dsp_keyfile, dsp_conf)
+   store_ephemeral_keys(self.esp_keyfile, esp_keys)
+   store_ephemeral_keys(self.dsp_keyfile, dsp_keys)
 end

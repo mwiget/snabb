@@ -12,6 +12,7 @@ local ethernet= require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local datagram = require("lib.protocol.datagram")
 local numa = require("lib.numa")
+local yang = require("lib.yang.yang")
 local S = require("syscall")
 
 -- sudo ./snabb snsh program/vita/test.lua [<pktsize>|IMIX] [<npackets>]
@@ -39,28 +40,25 @@ function test_packets (pktsize)
 end
 
 
-if numa.has_numa() then
-   -- Bind to current NUMA node
-   local node = S.getcpu().node
-   print("NUMA: binding to CPU node "..node)
-   numa.bind_to_numa_node(node)
-end
-
-
 local conf = {
-  node_mac = "52:54:00:00:00:00",
-   node_ip4 = "192.168.10.1",
+   private_interface = { macaddr = "52:54:00:00:00:00" },
+   public_interface = { macaddr = "52:54:00:00:00:FF" },
+   private_ip4 = "192.168.10.1",
+   public_ip4 = "203.0.113.1",
    private_nexthop_ip4 = "192.168.10.1",
-   public_nexthop_ip4 = "192.168.10.1",
-   routes = {
-      {
+   public_nexthop_ip4 = "203.0.113.1",
+   route = {
+      loopback = {
          net_cidr4 = "192.168.10.0/24",
-         gw_ip4 = "192.168.10.1",
+         gw_ip4 = "203.0.113.1",
          preshared_key = string.rep("00", 512)
       }
    },
    negotiation_ttl = 1
 }
+
+local current_node = S.getcpu().node
+vita.cpubind(nil, current_node)
 
 local c, private = vita.configure_private_router(conf, config.new())
 
@@ -80,15 +78,22 @@ engine.configure(c)
 worker.set_exit_on_worker_death(true)
 
 local confpath = shm.root.."/"..shm.resolve("group/testconf")
-worker.start(
-   "PublicRouter",
-   ([[require("program.vita.vita").public_router_loopback_worker(%q)]])
-      :format(confpath)
-)
-lib.store_conf(confpath, conf)
+do
+   local f = assert(io.open(confpath, "w"), "Unable to open file: "..confpath)
+   yang.print_data_for_schema_by_name('vita-esp-gateway', conf, f)
+   f:close()
+end
 
-worker.start("ESP", [[require("program.vita.vita").esp_worker()]])
-worker.start("DSP", [[require("program.vita.vita").dsp_worker()]])
+worker.start(
+   "PublicRouterLoopback",
+   ([[require("program.vita.vita").public_router_loopback_worker(%q, %s, %s)]])
+      :format(confpath, nil, current_node)
+)
+
+worker.start("ESP", ([[require("program.vita.vita").esp_worker(%s, %s)]])
+             :format(nil, current_node))
+worker.start("DSP", ([[require("program.vita.vita").dsp_worker(%s, %s)]])
+                :format(nil, current_node))
 
 
 -- adapted from snabbnfv traffic
