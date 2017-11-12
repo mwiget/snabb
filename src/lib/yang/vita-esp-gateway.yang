@@ -5,17 +5,21 @@ module vita-esp-gateway {
   import ietf-yang-types { prefix yang; }
   import ietf-inet-types { prefix inet; }
 
+  typedef pci-address {
+    type string {
+      pattern '([0-9a-fA-F]{4}:)?[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]';
+    }
+  }
+  typedef key32 { type string { pattern '([0-9a-fA-F]{2}\s*){32}'; } }
+  typedef time-to-live { type uint32 { range "1..max"; } }
 
   grouping interface {
     leaf macaddr { type yang:mac-address; mandatory true; }
     leaf vlan { type uint16 { range "0..4095"; } }
     leaf mtu { type uint16; }
-    leaf pciaddr { type string; }
+    leaf pciaddr { type pci-address; }
     leaf vmdq { type boolean; }
   }
-
-  typedef time-to-live { type uint32 { range "1..max"; } }
-
 
   container private_interface { uses interface; }
   container public_interface { uses interface; }
@@ -31,7 +35,7 @@ module vita-esp-gateway {
     leaf id { type string; mandatory true; }
     leaf net_cidr4 { type inet:ipv4-prefix; mandatory true; }
     leaf gw_ip4 { type inet:ipv4-address-no-zone; mandatory true; }
-    leaf preshared_key { type string; mandatory true; }
+    leaf preshared_key { type key32; mandatory true; }
   }
 
   leaf negotiation_ttl { type time-to-live; }
