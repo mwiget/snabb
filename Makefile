@@ -27,7 +27,7 @@ all: $(LUAJIT) $(SYSCALL) $(PFLUA)
 #	libsodium
 	@(cd lib/libsodium && ./configure && $(MAKE))
 #	snabb
-	cd src && $(MAKE)
+	cd src && $(MAKE) -f Makefile.vita-test
 
 install: all
 	install -D src/snabb ${DESTDIR}${PREFIX}/bin/snabb
