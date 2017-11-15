@@ -38,17 +38,40 @@ KeyManager = {
 local status = { expired = 0, negotiating = 1, ready = 2 }
 
 function KeyManager:new (conf)
-   local o = {
-      node_ip4n = ipv4:pton(conf.node_ip4),
-      routes = {},
-      esp_keyfile = shm.root.."/"..shm.resolve(conf.esp_keyfile),
-      dsp_keyfile = shm.root.."/"..shm.resolve(conf.dsp_keyfile),
-      negotiation_ttl = conf.negotiation_ttl,
-      sa_ttl = conf.sa_ttl,
-      ip = ipv4:new({})
-   }
+   local o = { routes = {}, ip = ipv4:new({}) }
+   local self = setmetatable(o, { __index = KeyManager })
+   self:reconfig(conf)
+   assert(C.sodium_init() >= 0, "Failed to initialize libsodium.")
+   return self
+end
+
+function KeyManager:reconfig (conf)
+   local function find_route (id)
+      for _, route in ipairs(self.routes) do
+         if route.id == id then return route end
+      end
+   end
+   local function route_equal (x, y)
+      return x.id == y.id
+         and x.gw_ip4 == y.gw_ip4
+         and lib.equal(x.preshared_key, y.preshared_key)
+   end
+   local function free_route (route)
+      if route.status ~= status.expired then
+         timer.deactivate(route.timeout)
+         logger:log("Expiring keys for "..route.gw_ip4.." (reconfig)")
+         self:expire_route(route)
+      end
+   end
+
+   -- NB: if node_ip4 changes, all ephemeral keys are invalidated
+   local new_node_ip4n = ipv4:pton(conf.node_ip4)
+
+   -- compute new set of routes
+   local new_routes = {}
    for id, route in pairs(conf.routes) do
-      o.routes[#o.routes+1] = {
+      local old_route = find_route(id)
+      local new_route = {
          id = id,
          gw_ip4 = route.gw_ip4,
          gw_ip4n = ipv4:pton(route.gw_ip4), -- for fast compare
@@ -60,9 +83,32 @@ function KeyManager:new (conf)
          tx_sa = nil, rx_sa = nil,
          timeout = nil
       }
+      if old_route
+         and route_equal(new_route, old_route)
+         and lib.equal(self.node_ip4n, new_node_ip4n)
+      then
+         -- keep old route
+         table.insert(new_routes, old_route)
+      else
+         -- clean up after the old route if necessary
+         if old_route then free_route(old_route) end
+         -- insert new route
+         table.insert(new_routes, new_route)
+      end
    end
-   assert(not (C.sodium_init() < 0), "Failed to initialize libsodium.")
-   return setmetatable(o, { __index = KeyManager })
+
+   -- clean up after removed routes
+   for _, route in ipairs(self.routes) do
+      if not conf.routes[route.id] then free_route(route) end
+   end
+
+   -- switch to new configuration
+   self.node_ip4n = new_node_ip4n
+   self.routes = new_routes
+   self.esp_keyfile = shm.root.."/"..shm.resolve(conf.esp_keyfile)
+   self.dsp_keyfile = shm.root.."/"..shm.resolve(conf.dsp_keyfile)
+   self.negotiation_ttl = conf.negotiation_ttl
+   self.sa_ttl = conf.sa_ttl
 end
 
 function KeyManager:push ()
@@ -78,12 +124,6 @@ function KeyManager:push ()
       end
    end
 end
-
---[[
-function KeyManager:reconfig ()
-   -- TODO: reconfigure without clobbering SAs
-end
-]]--
 
 local function randombytes (n)
    local bytes = ffi.new("uint8_t[?]", n)
