@@ -10,16 +10,16 @@
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   width="326.97137mm"
+   width="392.37137mm"
    height="164.04355mm"
-   viewBox="0 0 1158.5606 581.25703"
+   viewBox="0 0 1390.293 581.25703"
    id="svg2"
    version="1.1"
    inkscape:version="0.91 r13725"
    sodipodi:docname="vita-detail.svg"
    inkscape:export-filename="/home/max/git/snabb/vita-detail.png"
-   inkscape:export-xdpi="150"
-   inkscape:export-ydpi="150">
+   inkscape:export-xdpi="128"
+   inkscape:export-ydpi="128">
   <defs
      id="defs4">
     <linearGradient
@@ -1181,15 +1181,15 @@
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
-     inkscape:zoom="0.65241921"
-     inkscape:cx="541.70264"
-     inkscape:cy="255.44188"
+     inkscape:zoom="0.79110895"
+     inkscape:cx="575.56106"
+     inkscape:cy="255.44187"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
      fit-margin-top="0"
-     fit-margin-left="0"
-     fit-margin-right="0"
+     fit-margin-left="32.7"
+     fit-margin-right="32.7"
      fit-margin-bottom="0"
      showguides="true"
      inkscape:guide-bbox="true"
@@ -1197,7 +1197,8 @@
      inkscape:window-height="1056"
      inkscape:window-x="0"
      inkscape:window-y="0"
-     inkscape:window-maximized="1" />
+     inkscape:window-maximized="1"
+     units="mm" />
   <metadata
      id="metadata7">
     <rdf:RDF>
@@ -1214,7 +1215,7 @@
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1"
-     transform="translate(284.68403,126.26886)">
+     transform="translate(400.55025,126.26886)">
     <g
        id="g4678"
        transform="translate(5.2575058,38.622588)">
