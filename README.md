@@ -67,8 +67,8 @@ while Vita is running, without affecting unrelated routes.
 
 ## Getting started
 
-Vita requires an *Intel x86* processor and a compatible network interface card
-(currently *Intel* chipsets i210, i350, and 82599).
+Vita runs on any modern Linux/x86-64 distribution, but requires a compatible
+network interface card (currently *Intel* chipsets i210, i350, and 82599).
 
     $ git clone https://github.com/inters/vita
     $ cd vita
