@@ -3,11 +3,12 @@ LUAOBJ = $(LUASRC:.lua=.o)
 CSRC   = $(wildcard src/c/*.c)
 COBJ   = $(CSRC:.c=.o)
 PREFIX = /usr/local
+RECIPE ?= Makefile.vita-test
 
 LUAJIT_CFLAGS := -include $(CURDIR)/gcc-preinclude.h -DLUAJIT_VMPROFILE
 
 all: $(LUAJIT) $(SYSCALL) $(PFLUA) luajit ljsyscall ljndpi libsodium
-	cd src && $(MAKE) -f Makefile.vita-test
+	cd src && $(MAKE) -f $(RECIPE)
 luajit: $(LUAJIT)
 	@(cd lib/luajit && \
 	 $(MAKE) PREFIX=`pwd`/usr/local \

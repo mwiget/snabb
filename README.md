@@ -72,7 +72,7 @@ network interface card (currently *Intel* chipsets i210, i350, and 82599).
 
     $ git clone https://github.com/inters/vita
     $ cd vita
-    $ make -j
+    $ RECIPE=Makefile.vita make -j
     $ sudo src/vita --help
 
 The `vita` binary is stand-alone, includes all auxiliary applications, and can
