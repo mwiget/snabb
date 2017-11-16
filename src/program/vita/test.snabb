@@ -1,3 +1,5 @@
+#!/usr/bin/env snabb snsh
+
 -- Use of this source code is governed by the Apache 2.0 license; see COPYING.
 
 local shm = require("core.shm")
@@ -15,7 +17,7 @@ local numa = require("lib.numa")
 local yang = require("lib.yang.yang")
 local S = require("syscall")
 
--- sudo ./snabb snsh program/vita/test.lua [<pktsize>|IMIX] [<npackets>]
+-- sudo program/vita/test.snabb [<pktsize>|IMIX] [<npackets>]
 -- default is 10 million packets at IMIX                (-:
 
 local IMIX = { 54, 54, 54, 54, 54, 54, 54, 590, 590, 590, 590, 1514 }
