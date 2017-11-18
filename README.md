@@ -1,13 +1,13 @@
-# ![Vita](vita.png)
+# ![Vita](vita.png)  
 
 …is a *virtual private network* (VPN) gateway you can use to interconnect your
-data centers. Vita acts as a tunnel between your local network and any number
-of remote Vita gateways. With it, nodes spread across your data centers can
-communicate with each other as if they were on the same local network, with
+LANs. Vita acts as a tunnel between your local, private network and any number
+of remote Vita gateways. With it, nodes spread across your outposts can
+communicate with each other as if they were on the same LAN, with
 confidentiality and authenticity ensured at the network layer. Vita is probably
 more efficient at encapsulating traffic than your application servers. You can
-free cycles for your application by offloading your cryptography workload to
-Vita.
+free cycles for your application by offloading your packet encryption and
+authentication workload to Vita.
 
 ![a mesh of Vita gateways forms a VPN](vita-sketch.png)
 
@@ -24,7 +24,7 @@ Vita automatically, with no manual intervention required.
 Deploying Vita is easy, and not invasive to your existing infrastructure. It
 can be as simple as adding an entry to the IP routing table of your default
 gateway, to ensure that packets to destinations within your private network are
-routed over an extra hop: the Vita gateway. Whether it forwards the
+routed over an extra hop: the Vita gateway. Whether Vita forwards the
 encapsulated packets back to your default gateway, or directly to your modem
 depends on your setup, and is freely configurable.
 
@@ -39,7 +39,7 @@ while Vita is running, without affecting unrelated routes.
 
 ## WARNING:
 
-> Vita is currently early alpha quality software, and has never been audited.
+> Vita is currently early-alpha-quality software, and has never been audited.
 
 ## Features
 
