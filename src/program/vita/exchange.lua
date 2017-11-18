@@ -9,6 +9,7 @@ local counter = require("core.counter")
 local lib = require("core.lib")
 local ipv4 = require("lib.protocol.ipv4")
 local yang = require("lib.yang.yang")
+local schemata = require("program.vita.schemata")
 local logger = lib.logger_new({ rate = 32, module = 'KeyManager' })
 require("lib.sodium_h")
 local C = ffi.C
@@ -316,7 +317,7 @@ end
 
 local function store_ephemeral_keys (path, keys)
    local f = assert(io.open(path, "w"), "Unable to open file: "..path)
-   yang.print_data_for_schema_by_name('vita-ephemeral-keys', {route=keys}, f)
+   yang.print_data_for_schema(schemata['ephemeral-keys'], {route=keys}, f)
    f:close()
 end
 
