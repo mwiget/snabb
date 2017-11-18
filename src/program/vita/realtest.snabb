@@ -1,6 +1,6 @@
 #!/usr/bin/env snabb snsh
 
--- Use of this source code is governed by the Apache 2.0 license; see COPYING.
+-- Use of this source code is governed by the GNU AGPL license; see COPYING.
 
 local counter = require("core.counter")
 local Intel = require("apps.intel_mp.intel_mp").Intel
