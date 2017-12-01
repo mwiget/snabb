@@ -1,5 +1,7 @@
 # ![Vita](vita.png)  
 
+🚧 🚧 🚧 🚧
+
 …is a *virtual private network* (VPN) gateway you can use to interconnect your
 LANs. Vita acts as a tunnel between your local, private network and any number
 of remote Vita gateways. With it, nodes spread across your outposts can
@@ -39,24 +41,19 @@ while Vita is running, without affecting unrelated routes.
 
 ## WARNING:
 
-> Vita is currently early-alpha-quality software, and has never been audited.
+> Vita is in its early “tech-demo” stage of development. Not for production!
 
 ## Features
 
-- Provides confidentiality and authenticity at the network layer
-- Implements IPsec for IPv4, specifically
-  *IP Encapsulating Security Payload* (ESP)
-- High performance AES-GCM 128-bit encryption based on a reference
-  implementation by *Intel* for their AVX2 (generation-4) processors
-- Suitable for 1-Gigabit and 10-Gigabit Ethernet
-- Easy setup and configuration with only a single configuration file
-- Fully automated key exchange and rotation: no manual intervention required
-  after setup
-- Zero-downtime network expansion: add new routes to your network without
-  affecting availability
-- Strong observability built in: easily access relevant statistics of a running
-  Vita node
 - Runs on commodity hardware
+- Implements IPsec for IPv4, specifically
+  *IP Encapsulating Security Payload* (ESP) in tunnel mode
+- Uses optimized AES-GCM 128-bit encryption based on a reference
+  implementation by *Intel* for their AVX2 (generation-4) processors
+- Suitable for 1-Gigabit, 10-Gigabit (and beyond?) Ethernet
+- Automated key exchange and rotation (work in progress!)
+- Dynamic reconfiguration (update routes while running)
+- Strong observability: access relevant statistics of a running Vita node
 
 ## Documentation
 
