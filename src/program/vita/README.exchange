@@ -1,0 +1,39 @@
+VITA-SKE (version 1a)
+
+ A simple key negotiation protocol based on preshared symmetric keys that
+ provides authentication, perfect forward secrecy, and is immune to replay
+ attacks.
+
+Primitives (from libsodium 1.0.15):
+
+ * AEAD: crypto_aead_xchacha20poly1305 (used with random nonces)
+ * DH: crypto_scalarmult_curve25519
+ * HASH: crypto_generichash_blake2b
+
+Description:
+
+ Let p{1,2} and s{1,2} be random ephemeral public key pairs, and n{1,2} random
+ nonces.
+
+ -> AEAD(k, n1 ‖ p1)
+ <- AEAD(k, n2 ‖ p2)
+
+ Ensure that n1 ≠ n2. Let q be the result of DH(s1, p2), and ensure that the
+ call was successful. Let e be the result of HASH(q ‖ p1 ‖ p2).
+
+ If n1 < n2 then parse e as tx ‖ rx, otherwise parse e as rx ‖ tx, where tx is
+ the key used for encrypting outgoing traffic, and rx is the key used for
+ decrypting incoming traffic.
+
+ -> AEAD(k, n2)
+ <- AEAD(k, n1')
+
+ Ensure that n1' = n1.
+
+Proof:
+
+ Assuming an attacker can not guess k in AEAD(k, x), they can not produce the
+ message AEAD(k, n1), and thus are unable to complete a key exchange.
+
+ Assuming an attacker can not guess the result of DH(s1, p2), they are also
+ unable to guess e, and thus perfect forward security is provided.
