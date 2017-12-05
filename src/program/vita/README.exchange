@@ -1,39 +1,43 @@
-VITA-SKE (version 1a)
+VITA-SKE (version 1b)
 
- A simple key negotiation protocol based on preshared symmetric keys that
+ A simple key negotiation protocol based on pre-shared symmetric keys that
  provides authentication, perfect forward secrecy, and is immune to replay
  attacks.
 
 Primitives (from libsodium 1.0.15):
 
- * AEAD: crypto_aead_xchacha20poly1305 (used with random nonces)
- * DH: crypto_scalarmult_curve25519
- * HASH: crypto_generichash_blake2b
+ * HMAC: crypto_auth_hmacsha512256 (key is 256‑bits, output is 256‑bits)
+ * DH: crypto_scalarmult_curve25519 (keys are 256‑bits, output is 256‑bits)
+ * HASH: crypto_generichash_blake2b (output is 256‑bits)
 
 Description:
 
- Let p{1,2} and s{1,2} be random ephemeral public key pairs, and n{1,2} random
- nonces.
+ Let k be a pre-shared symmetric key. Let p1/s1 and p2/s2 be random ephemeral
+ asymmetric key pairs, and n{1,2} be random 256‑bit nonces, where p1, s1, and
+ n1 are chosen by us. Let h1 = HMAC(k, n1 ‖ p1).
 
- -> AEAD(k, n1 ‖ p1)
- <- AEAD(k, n2 ‖ p2)
+ -> n1 ‖ p1 ‖ h1
+ <- n2 ‖ p2 ‖ h2
 
- Ensure that n1 ≠ n2. Let q be the result of DH(s1, p2), and ensure that the
- call was successful. Let e be the result of HASH(q ‖ p1 ‖ p2).
+ Ensure that h2 = HMAC(k, n2 ‖ p2) and n1 ≠ n2. Let q = DH(s1, p2), and ensure
+ that s1 and p2 are valid arguments. Let e = HASH(q ‖ p1 ‖ p2).
 
- If n1 < n2 then parse e as tx ‖ rx, otherwise parse e as rx ‖ tx, where tx is
- the key used for encrypting outgoing traffic, and rx is the key used for
- decrypting incoming traffic.
+ If n1 < n2 then let e = tx ‖ rx, otherwise let e = rx ‖ tx, where tx is the
+ key used for encrypting outgoing traffic, and rx is the key used for
+ decrypting incoming traffic. Let h3 = HMAC(k, n2).
 
- -> AEAD(k, n2)
- <- AEAD(k, n1')
+ -> n2 ‖ h3
+ <- nx ‖ h4
 
- Ensure that n1' = n1.
+ Ensure that h4 = HMAC(k, n1)
 
-Proof:
+Security Proof:
 
- Assuming an attacker can not guess k in AEAD(k, x), they can not produce the
- message AEAD(k, n1), and thus are unable to complete a key exchange.
+ Assuming an attacker can not guess k, and n1 has enough entropy so the
+ probability that the tuple (K, n1) has occurred before is negligible, they are
+ unable to produce the value h4 = HMAC(k, n1), and thus are unable to complete
+ a key exchange.
 
- Assuming an attacker can not guess the result of DH(s1, p2), they are also
- unable to guess e, and thus perfect forward security is provided.
+ Assuming an attacker can not guess s1 or s2, they are unable to produce
+ q = DH(s1, p2) or q = DH(s2, p1) and derive e = HASH(q ‖ p1 ‖ p2), and thus
+ perfect forward secrecy is provided.
