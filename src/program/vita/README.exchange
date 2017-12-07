@@ -1,4 +1,4 @@
-VITA-SKE (version 1b)
+VITA-SKE (version 1c)
 
  A simple key negotiation protocol based on pre-shared symmetric keys that
  provides authentication, perfect forward secrecy, and is immune to replay
@@ -12,32 +12,36 @@ Primitives (from libsodium 1.0.15):
 
 Description:
 
- Let k be a pre-shared symmetric key. Let p1/s1 and p2/s2 be random ephemeral
- asymmetric key pairs, and n{1,2} be random 256‑bit nonces, where p1, s1, and
- n1 are chosen by us. Let h1 = HMAC(k, n1 ‖ p1).
+ Let k be a pre-shared symmetric key. Let n{1,2} be random 256‑bit nonces,
+ where n1 is chosen by us.
 
- -> n1 ‖ p1 ‖ h1
- <- n2 ‖ p2 ‖ h2
+ -> n1
+ <- n2
 
- Ensure that h2 = HMAC(k, n2 ‖ p2) and n1 ≠ n2. Let q = DH(s1, p2), and ensure
- that s1 and p2 are valid arguments. Let e = HASH(q ‖ p1 ‖ p2).
+ Let p1/s1 and p2/s2 be random ephemeral asymmetric key pairs, where p1 and s1
+ are choosen by us. Let h1 = HMAC(k, n2 ‖ p1).
 
- If n1 < n2 then let e = tx ‖ rx, otherwise let e = rx ‖ tx, where tx is the
- key used for encrypting outgoing traffic, and rx is the key used for
- decrypting incoming traffic. Let h3 = HMAC(k, n2).
+ -> n2 ‖ p1 ‖ h1
+ <- n1 ‖ p2 ‖ h2
 
- -> n2 ‖ h3
- <- nx ‖ h4
-
- Ensure that h4 = HMAC(k, n1)
+ Ensure that h2 = HMAC(k, n1 ‖ p2) and n1 ≠ n2. Let q = DH(s1, p2), and ensure
+ that p2 is a valid argument. Let e = HASH(q ‖ p1 ‖ p2). If n1 < n2 then let
+ e = tx ‖ rx, otherwise let e = rx ‖ tx, where tx is the key used for
+ encrypting outgoing traffic, and rx is the key used for decrypting incoming
+ traffic.
 
 Security Proof:
 
  Assuming an attacker can not guess k, and n1 has enough entropy so the
  probability that the tuple (K, n1) has occurred before is negligible, they are
- unable to produce the value h4 = HMAC(k, n1), and thus are unable to complete
- a key exchange.
+ unable to produce the value h2 = HMAC(k, n1 ‖ p2), and thus are unable to
+ complete a key exchange.
 
  Assuming an attacker can not guess s1 or s2, they are unable to produce
  q = DH(s1, p2) or q = DH(s2, p1) and derive e = HASH(q ‖ p1 ‖ p2), and thus
  perfect forward secrecy is provided.
+
+References:
+
+ - spiped protocol:
+   https://github.com/Tarsnap/spiped/blob/d1e62a8/DESIGN.md#spiped-design
