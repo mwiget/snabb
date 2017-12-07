@@ -1,4 +1,4 @@
-VITA-SKE (version 1c)
+VITA-SKE (version 1d)
 
  A simple key negotiation protocol based on pre-shared symmetric keys that
  provides authentication, perfect forward secrecy, and is immune to replay
@@ -6,42 +6,79 @@ VITA-SKE (version 1c)
 
 Primitives (from libsodium 1.0.15):
 
- * HMAC: crypto_auth_hmacsha512256 (key is 256‑bits, output is 256‑bits)
- * DH: crypto_scalarmult_curve25519 (keys are 256‑bits, output is 256‑bits)
- * HASH: crypto_generichash_blake2b (output is 256‑bits)
+ • HMAC: crypto_auth_hmacsha512256 (key is 256‑bits, output is 256‑bits)
+ • DH: crypto_scalarmult_curve25519 (keys are 256‑bits, output is 256‑bits)
+ • HASH: crypto_generichash_blake2b (output is 256‑bits)
+
+Notational Conventions:
+
+ → m
+  Denotes that we receive the message m.
+
+ ← m
+  Denotes that we send the message m.
+
+ a ‖ b
+  Denotes a concatenated with b.
 
 Description:
 
- Let k be a pre-shared symmetric key. Let n{1,2} be random 256‑bit nonces,
+ Let k be a pre-shared symmetric key. Let n1 and n2 be random 256‑bit nonces,
  where n1 is chosen by us.
 
- -> n1
- <- n2
+ ← n1
+ → n2
 
- Let p1/s1 and p2/s2 be random ephemeral asymmetric key pairs, where p1 and s1
- are choosen by us. Let h1 = HMAC(k, n2 ‖ p1).
+ Ensure that n1 ≠ n2. Let (p1, s1) and (p2, s2) be random, ephemeral,
+ asymmetric key pairs, where (p1, s1) is choosen by us. Let spi1 and spi2 be
+ “security parameter indexes” (SPI), where spi1 chosen by us. Let
+ h1 = HMAC(k, spi1 ‖ n1 ‖ n2 ‖ p1).
 
- -> n2 ‖ p1 ‖ h1
- <- n1 ‖ p2 ‖ h2
+ ← spi1 ‖ p1 ‖ h1
+ → spi2 ‖ p2 ‖ h2
 
- Ensure that h2 = HMAC(k, n1 ‖ p2) and n1 ≠ n2. Let q = DH(s1, p2), and ensure
+ Ensure that h2 = HMAC(k, spi2 ‖ n2 ‖ n1 ‖ p2). Let q = DH(s1, p2), and ensure
  that p2 is a valid argument. Let e = HASH(q ‖ p1 ‖ p2). If n1 < n2 then let
- e = tx ‖ rx, otherwise let e = rx ‖ tx, where tx is the key used for
- encrypting outgoing traffic, and rx is the key used for decrypting incoming
- traffic.
+ e = rx ‖ tx, otherwise let e = tx ‖ rx, where rx and tx are 128‑bit keys.
+ Assign (spi1, rx) to the incoming “security association” (SA), and (spi2, tx)
+ for the outgoing SA.
+
+ The description above illustrates the perspective of an active party adhering
+ to the protocol, i.e. the exchange is initiated by us. An opposite, passive
+ party adhering to the protocol, i.e. one that is merely responding to a key
+ exchange initiated by an active party, must ensure that the tuple
+ (spi1, p1, h1) was received and authenticated before computing its response
+ tuple (spi2, p2, h2). Not that there might be no passive party in an exchange
+ if both parties have initiated the exchange before receiving an initial nonce.
 
 Security Proof:
 
- Assuming an attacker can not guess k, and n1 has enough entropy so the
- probability that the tuple (K, n1) has occurred before is negligible, they are
- unable to produce the value h2 = HMAC(k, n1 ‖ p2), and thus are unable to
- complete a key exchange.
+ Assuming an attacker can not guess k, and n1 has enough entropy so that the
+ probability that the tuple (n1, n2, p2) has occurred before is negligible,
+ they are unable to produce the value h2 = HMAC(k, n2 ‖ n1 ‖ p2), and thus are
+ unable to complete a key exchange.
 
  Assuming an attacker can not guess s1 or s2, they are unable to produce
  q = DH(s1, p2) or q = DH(s2, p1) and derive e = HASH(q ‖ p1 ‖ p2), and thus
  perfect forward secrecy is provided.
 
+ A party passively adhering to the protocol will not produce a tuple
+ (spi2, p2, h2) unless it has previously authenticated its counterpart tuple
+ (spi1, p1, h1), and thus can not be used as an oracle.
+
+Notes:
+
+ • Future versions of this protocol may introduce the use of a key derivation
+   function (KDF), such as libsodium’s crypto_kdf_blake2b_derive_from_key, to
+   derive additional key material from e = HASH(q ‖ p1 ‖ p2).
+
 References:
 
- - spiped protocol:
+ • The spiped protocol:
    https://github.com/Tarsnap/spiped/blob/d1e62a8/DESIGN.md#spiped-design
+ • Additional discussion of the spiped protocol:
+   https://github.com/Tarsnap/spiped/issues/151
+ • The Sodium crypto library (libsodium):
+   https://download.libsodium.org/doc/
+ • Security Architecture for the Internet Protocol:
+   https://tools.ietf.org/html/rfc4301
