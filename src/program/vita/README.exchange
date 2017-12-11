@@ -1,4 +1,4 @@
-VITA-SKE (version 1d)
+VITA-SKE (version 1e)
 
  A simple key negotiation protocol based on pre-shared symmetric keys that
  provides authentication, perfect forward secrecy, and is immune to replay
@@ -23,39 +23,46 @@ Notational Conventions:
 
 Description:
 
- Let k be a pre-shared symmetric key. Let n1 and n2 be random 256‑bit nonces,
- where n1 is chosen by us.
+ Let k be a pre-shared symmetric key. Let spi be a “Security Parameter Index”
+ (SPI). Let n1 and n2 be random 256‑bit nonces, where n1 is chosen by us.
 
- ← n1
- → n2
+  ← n1
+  → n2
 
  Ensure that n1 ≠ n2. Let (p1, s1) and (p2, s2) be random, ephemeral,
- asymmetric key pairs, where (p1, s1) is choosen by us. Let spi1 and spi2 be
- “security parameter indexes” (SPI), where spi1 chosen by us. Let
- h1 = HMAC(k, spi1 ‖ n1 ‖ n2 ‖ p1).
+ asymmetric key pairs, where (p1, s1) is choosen by us.
+ Let h1 = HMAC(k, spi ‖ n1 ‖ n2 ‖ p1).
 
- ← spi1 ‖ p1 ‖ h1
- → spi2 ‖ p2 ‖ h2
+  ← p1 ‖ h1
+  → p2 ‖ h2
 
- Ensure that h2 = HMAC(k, spi2 ‖ n2 ‖ n1 ‖ p2). Let q = DH(s1, p2), and ensure
+ Ensure that h2 = HMAC(k, spi ‖ n2 ‖ n1 ‖ p2). Let q = DH(s1, p2), and ensure
  that p2 is a valid argument. Let e = HASH(q ‖ p1 ‖ p2). If n1 < n2 then let
  e = rx ‖ tx, otherwise let e = tx ‖ rx, where rx and tx are 128‑bit keys.
- Assign (spi1, rx) to the incoming “security association” (SA), and (spi2, tx)
+ Assign (spi, rx) to the incoming “security association” (SA), and (spi, tx)
  for the outgoing SA.
 
  The description above illustrates the perspective of an active party adhering
  to the protocol, i.e. the exchange is initiated by us. An opposite, passive
  party adhering to the protocol, i.e. one that is merely responding to a key
  exchange initiated by an active party, must ensure that the tuple
- (spi1, p1, h1) was received and authenticated before computing its response
- tuple (spi2, p2, h2). Not that there might be no passive party in an exchange
- if both parties have initiated the exchange before receiving an initial nonce.
+ (spi, p2, h2) was received and authenticated before computing and sending its
+ response tuple (spi, p1, h1). For a passive party the order of messages during
+ the exchange is reversed:
+
+  → n2
+  ← n1
+  → p2 ‖ h2        (ensure h2 is verified before we reply)
+  ← p1 ‖ h1
+
+ Note that there might be no passive party in an exchange if both parties have
+ initiated the exchange before receiving an initial nonce message.
 
 Security Proof:
 
  Assuming an attacker can not guess k, and n1 has enough entropy so that the
- probability that the tuple (n1, n2, p2) has occurred before is negligible,
- they are unable to produce the value h2 = HMAC(k, n2 ‖ n1 ‖ p2), and thus are
+ probability that the tuple (n1, p2) has occurred before is negligible, they
+ are unable to produce the value h2 = HMAC(k, spi ‖ n2 ‖ n1 ‖ p2), and thus are
  unable to complete a key exchange.
 
  Assuming an attacker can not guess s1 or s2, they are unable to produce
@@ -63,8 +70,8 @@ Security Proof:
  perfect forward secrecy is provided.
 
  A party passively adhering to the protocol will not produce a tuple
- (spi2, p2, h2) unless it has previously authenticated its counterpart tuple
- (spi1, p1, h1), and thus can not be used as an oracle.
+ (spi, p1, h1) unless it has previously authenticated its counterpart tuple
+ (spi, p2, h2), and thus can not be used as an oracle.
 
 Notes:
 
