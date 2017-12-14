@@ -4,6 +4,7 @@ module vita-esp-gateway {
 
   import ietf-yang-types { prefix yang; }
   import ietf-inet-types { prefix inet; }
+  import vita-ephemeral-keys { prefix ephemeral-keys; }
 
   typedef pci-address {
     type string {
@@ -31,11 +32,12 @@ module vita-esp-gateway {
   leaf public_nexthop_ip4 { type inet:ipv4-address-no-zone; mandatory true; }
 
   list route {
-    key id; unique "gw_ip4 net_cidr4";
+    key id; unique "net_cidr4 preshared_key spi";
     leaf id { type string; mandatory true; }
     leaf net_cidr4 { type inet:ipv4-prefix; mandatory true; }
     leaf gw_ip4 { type inet:ipv4-address-no-zone; mandatory true; }
     leaf preshared_key { type key32; mandatory true; }
+    leaf spi { type ephemeral-keys:spi; mandatory true; }
   }
 
   leaf negotiation_ttl { type time-to-live; }
