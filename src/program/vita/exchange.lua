@@ -11,7 +11,7 @@ local lib = require("core.lib")
 local ipv4 = require("lib.protocol.ipv4")
 local yang = require("lib.yang.yang")
 local schemata = require("program.vita.schemata")
-local logger = lib.logger_new({ rate = 32, module = 'KeyManager' })
+local audit = lib.logger_new({rate=32, module='KeyManager'})
 require("program.vita.sodium_h")
 local C = ffi.C
 
@@ -68,8 +68,7 @@ function KeyManager:reconfig (conf)
    end
    local function free_route (route)
       if route.status ~= status.expired then
-         timer.deactivate(route.timeout)
-         logger:log("Expiring keys for '"..route.id.."' (reconfig)")
+         audit:log("Expiring keys for '"..route.id.."' (reconfig)")
          self:expire_route(route)
       end
    end
@@ -124,14 +123,17 @@ function KeyManager:push ()
    end
 
    for _, route in ipairs(self.routes) do
-      if route.status == status.expired then
-         self:negotiate(route)
-      end
-      local ecode = route.protocol:reset_if_expired()
-      if ecode == Protocol.code.expired then
+      if route.protocol:reset_if_expired() == Protocol.code.expired then
          counter.add(self.shm.negotiations_expired)
-         logger:log("Negotiation expired for '"..route.id.."' (negotiation_ttl)")
-      else assert(not ecode) end
+         audit:log("Negotiation expired for '"..route.id.."' (negotiation_ttl")
+      end
+      if route.status < status.ready then
+         self:negotiate(route)
+      elseif route.timeout() then
+         counter.add(self.shm.keypairs_expired)
+         audit:log("Keys expired for '"..route.id.."' (sa_ttl)")
+         self:expire_route(route)
+      end
    end
 end
 
@@ -140,7 +142,7 @@ function KeyManager:negotiate (route)
       route.protocol:initiate_exchange(self.nonce_message)
    if not ecode then
       counter.add(self.shm.negotiations_initiated)
-      logger:log("Initiating negotiation for '"..route.id.."'")
+      audit:log("Initiating negotiation for '"..route.id.."'")
       link.transmit(self.output.output, self:request(route, nonce_message))
    end
 end
@@ -151,7 +153,7 @@ function KeyManager:handle_negotiation (request)
    if not (self:handle_nonce_request(route, message)
            or self:handle_key_request(route, message)) then
       counter.add(self.shm.rxerrors)
-      logger:log("Rejected invalid negotiation request")
+      audit:log("Rejected invalid negotiation request")
    end
 end
 
@@ -165,12 +167,12 @@ function KeyManager:handle_nonce_request (route, message)
    else assert(not ecode) end
 
    counter.add(self.shm.nonces_negotiated)
-   logger:log("Negotiated nonces for '"..route.id.."'")
+   audit:log("Negotiated nonces for '"..route.id.."'")
 
    if response then
       link.transmit(self.output.output, self:request(route, response))
    else
-      logger:log("Offering keys for '"..route.id.."'")
+      audit:log("Offering keys for '"..route.id.."'")
       local _, key_message = route.protocol:exchange_key(self.key_message)
       link.transmit(self.output.output, self:request(route, key_message))
    end
@@ -197,7 +199,7 @@ function KeyManager:handle_key_request (route, message)
    else assert(not ecode) end
 
    counter.add(self.shm.keypairs_negotiated)
-   logger:log("Completed key exchange for '"..route.id.."'")
+   audit:log("Completed key exchange for '"..route.id.."'")
 
    if response then
       link.transmit(self.output.output, self:request(route, response))
@@ -206,19 +208,6 @@ function KeyManager:handle_key_request (route, message)
    self:configure_route(route, rx, tx)
 
    return true
-end
-
-function KeyManager:set_sa_timeout (route)
-   route.timeout = timer.new(
-      "sa_ttl",
-      function ()
-         counter.add(self.shm.keypairs_expired)
-         logger:log("Expiring keys for '"..route.id.."' (sa_ttl)")
-         self:expire_route(route)
-      end,
-      self.sa_ttl * 1e9
-   )
-   timer.activate(route.timeout)
 end
 
 function KeyManager:configure_route (route, rx, tx)
@@ -235,7 +224,7 @@ function KeyManager:configure_route (route, rx, tx)
       key = lib.hexdump(tx.key),
       salt = lib.hexdump(tx.salt)
    }
-   self:set_sa_timeout(route)
+   route.timeout = lib.timeout(self.sa_ttl)
    self:commit_ephemeral_keys()
 end
 
