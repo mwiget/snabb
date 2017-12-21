@@ -22,6 +22,7 @@ NextHop4 = {
       nexthop_ip4 = {required=true}
    },
    shm = {
+      protocol_errors = {counter},
       arp_requests = {counter},
       arp_replies = {counter},
       arp_errors = {counter},
@@ -98,7 +99,15 @@ function NextHop4:push ()
       -- Forward packets to next hop
       for _, input in ipairs(self.forward) do
          while not link.empty(input) do
-            link.transmit(output, self:encapsulate(link.receive(input), 0x0800))
+            local p = link.receive(input)
+            local ip4 = self.ip4:new_from_mem(p.data, p.length)
+            if ip4 and ip4:ttl() > 0 then
+               ip4:ttl(ip4:ttl() - 1)
+               ip4:checksum()
+               link.transmit(output, self:encapsulate(p, 0x0800))
+            else
+               counter.add(self.shm.protocol_errors)
+            end
          end
       end
 

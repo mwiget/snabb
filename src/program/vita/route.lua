@@ -6,11 +6,13 @@ local counter = require("core.counter")
 local ethernet = require("lib.protocol.ethernet")
 local ipv4 = require("lib.protocol.ipv4")
 local arp = require("lib.protocol.arp")
+local esp_header = require("lib.protocol.esp")
 local esp = require("lib.ipsec.esp")
 local exchange = require("program.vita.exchange")
 local lpm = require("lib.lpm.lpm4_248").LPM4_248
 local ctable = require("lib.ctable")
 local ffi = require("ffi")
+local packet_buffer
 
 
 -- route := { net_cidr4=(CIDR4), gw_ip4=(IPv4), preshared_key=(KEY) }
@@ -79,9 +81,7 @@ function PrivateRouter:push ()
    for i = 0, fwd4_cursor - 1 do
       local p = fwd4_packets[i]
       local ip4 = self.ip4:new_from_mem(p.data, ipv4:sizeof())
-      if ip4 and ip4:checksum_ok() and ip4:ttl() > 1 then
-         ip4:ttl(ip4:ttl() - 1)
-         ip4:checksum()
+      if ip4 and ip4:checksum_ok() then
          fwd4_packets[new_cursor] = p
          new_cursor = new_cursor + 1
       else
@@ -138,6 +138,7 @@ function PublicRouter:new (conf)
       routes = {},
       eth = ethernet:new({}),
       ip4 = ipv4:new({}),
+      esp = esp_header:new({}),
       ip4_packets = packet_buffer(),
       fwd4_packets = packet_buffer(),
       protocol_packets = packet_buffer(),
@@ -145,7 +146,7 @@ function PublicRouter:new (conf)
    }
    for _, route in pairs(conf.routes) do
       o.routes[#o.routes+1] = {
-         gw_ip4 = assert(route.gw_ip4, "Missing gw_ip4"),
+         spi = assert(route.spi, "Missing SPI"),
          link = nil
       }
    end
@@ -153,17 +154,16 @@ function PublicRouter:new (conf)
 end
 
 function PublicRouter:link ()
-   local ipv4_addr_t = ffi.typeof("uint8_t[4]")
    local index_t = ffi.typeof("uint32_t")
    self.routing_table4 = ctable.new{
-      key_type = ipv4_addr_t,
+      key_type = index_t,
       value_type = index_t
    }
    for index, route in ipairs(self.routes) do
       assert(ffi.cast(index_t, index) == index, "index overflow")
-      route.link = self.output[config.link_name(route.gw_ip4)]
+      route.link = self.output[tostring(route.spi)]
       if route.link then
-         self.routing_table4:add(ipv4:pton(route.gw_ip4), index)
+         self.routing_table4:add(route.spi, index)
       end
    end
 end
@@ -194,6 +194,8 @@ function PublicRouter:push ()
    for i = 0, ip4_cursor - 1 do
       local p = ip4_packets[i]
       local ip4 = self.ip4:new_from_mem(p.data, p.length)
+              and self.ip4:checksum_ok()
+              and self.ip4
       if ip4 and ip4:protocol() == esp.PROTOCOL then
          fwd4_packets[fwd4_cursor] = p
          fwd4_cursor = fwd4_cursor + 1
@@ -207,25 +209,8 @@ function PublicRouter:push ()
       end
    end
 
-   local new_cursor = 0
    for i = 0, fwd4_cursor - 1 do
-      local p = fwd4_packets[i]
-      local ip4 = self.ip4:new_from_mem(p.data, ipv4:sizeof())
-      if ip4:checksum_ok() and ip4:ttl() > 1 then
-         ip4:ttl(ip4:ttl() - 1)
-         ip4:checksum()
-         fwd4_packets[new_cursor] = p
-         new_cursor = new_cursor + 1
-      else
-         packet.free(p)
-         counter.add(self.shm.rxerrors)
-         counter.add(self.shm.protocol_errors)
-      end
-   end
-   fwd4_cursor = new_cursor
-
-   for i = 0, fwd4_cursor - 1 do
-      self:forward4(fwd4_packets[i])
+      self:forward4(packet.shiftleft(fwd4_packets[i], ipv4:sizeof()))
    end
 
    for i = 0, protocol_cursor - 1 do
@@ -237,15 +222,15 @@ function PublicRouter:push ()
    end
 end
 
-function PublicRouter:find_route4 (src)
-   return self.routes[self.routing_table4:lookup_ptr(src).value].link
+function PublicRouter:find_route4 (spi)
+   return self.routes[self.routing_table4:lookup_ptr(spi).value].link
 end
 
 function PublicRouter:forward4 (p)
-   self.ip4:new_from_mem(p.data, p.length)
-   local route = self:find_route4(self.ip4:src())
+   local route = self.esp:new_from_mem(p.data, p.length)
+             and self:find_route4(self.esp:spi())
    if route then
-      link.transmit(route, packet.shiftleft(p, ipv4:sizeof()))
+      link.transmit(route, p)
    else
       packet.free(p)
       counter.add(self.shm.rxerrors)

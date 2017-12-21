@@ -54,19 +54,16 @@ function KeyManager:reconfig (conf)
    end
    local function route_equal (x, y)
       return x.id == y.id
-         and x.gw_ip4 == y.gw_ip4
+         and x.spi == y.spi
          and lib.equal(x.preshared_key, y.preshared_key)
    end
    local function free_route (route)
       if route.status ~= status.expired then
          timer.deactivate(route.timeout)
-         logger:log("Expiring keys for "..route.gw_ip4.." (reconfig)")
+         logger:log("Expiring keys for '"..route.id.."' (reconfig)")
          self:expire_route(route)
       end
    end
-
-   -- NB: if node_ip4 changes, all ephemeral keys are invalidated
-   local new_node_ip4n = ipv4:pton(conf.node_ip4)
 
    -- compute new set of routes
    local new_routes = {}
@@ -74,20 +71,17 @@ function KeyManager:reconfig (conf)
       local old_route = find_route(id)
       local new_route = {
          id = id,
-         gw_ip4 = route.gw_ip4,
-         gw_ip4n = ipv4:pton(route.gw_ip4), -- for fast compare
+         gw_ip4n = ipv4:pton(route.gw_ip4),
          preshared_key = lib.hexundump(
             route.preshared_key,
             C.crypto_aead_xchacha20poly1305_ietf_KEYBYTES
          ),
+         spi = route.spi,
          status = status.expired,
          tx_sa = nil, rx_sa = nil,
          timeout = nil
       }
-      if old_route
-         and route_equal(new_route, old_route)
-         and lib.equal(self.node_ip4n, new_node_ip4n)
-      then
+      if old_route and route_equal(new_route, old_route) then
          -- keep old route
          table.insert(new_routes, old_route)
       else
@@ -104,7 +98,7 @@ function KeyManager:reconfig (conf)
    end
 
    -- switch to new configuration
-   self.node_ip4n = new_node_ip4n
+   self.node_ip4n = ipv4:pton(conf.node_ip4)
    self.routes = new_routes
    self.esp_keyfile = shm.root.."/"..shm.resolve(conf.esp_keyfile)
    self.dsp_keyfile = shm.root.."/"..shm.resolve(conf.dsp_keyfile)
@@ -133,14 +127,14 @@ local function randombytes (n)
 end
 
 function KeyManager:negotiate (route)
-   logger:log("Sending key exchange request to "..route.gw_ip4)
+   logger:log("Sending key exchange request for '"..route.id.."'")
 
    route.status = status.negotiating
    self:set_negotiation_timeout(route)
 
    route.tx_sa = {
       mode = "aes-gcm-128-12",
-      spi = math.max(1, ffi.cast("uint32_t *", randombytes(2))[0]),
+      spi = route.spi,
       key = lib.hexdump(ffi.string(randombytes(16), 16)),
       salt = lib.hexdump(ffi.string(randombytes(4), 4))
    }
@@ -156,13 +150,13 @@ function KeyManager:handle_negotiation (request)
       return
    end
 
-   logger:log("Received key exchange request from "..route.gw_ip4)
+   logger:log("Received key exchange request for '"..route.id.."'")
 
    route.rx_sa = sa
 
    if route.status == status.negotiating then
       counter.add(self.shm.keypairs_exchanged)
-      logger:log("Completed key exchange with "..route.gw_ip4)
+      logger:log("Completed key exchange for '"..route.id.."'")
       route.status = status.ready
       timer.deactivate(route.timeout)
       self:set_sa_timeout(route)
@@ -177,7 +171,7 @@ function KeyManager:set_negotiation_timeout (route)
       "negotiation_ttl",
       function ()
          counter.add(self.shm.negotiations_expired)
-         logger:log("Expiring keys for "..route.gw_ip4.." (negotiation_ttl)")
+         logger:log("Expiring keys for '"..route.id.."' (negotiation_ttl)")
          self:expire_route(route)
       end,
       self.negotiation_ttl * 1e9
@@ -190,7 +184,7 @@ function KeyManager:set_sa_timeout (route)
       "sa_ttl",
       function ()
          counter.add(self.shm.keypairs_expired)
-         logger:log("Expiring keys for "..route.gw_ip4.." (sa_ttl)")
+         logger:log("Expiring keys for '"..route.id.."' (sa_ttl)")
          self:expire_route(route)
       end,
       self.sa_ttl * 1e9
@@ -243,7 +237,7 @@ function KeyManager:request (route)
    packet.resize(request, request_length)
 
    local body = ffi.cast(request_t_ptr_t, request.data + ipv4:sizeof())
-   body.spi = lib.htonl(route.tx_sa.spi)
+   body.spi = lib.htonl(route.spi)
    ffi.copy(body.key, lib.hexundump(route.tx_sa.key, 16), 16)
    ffi.copy(body.salt, lib.hexundump(route.tx_sa.salt, 4), 4)
 
@@ -300,14 +294,15 @@ function KeyManager:parse_request (request)
       request.data, request_aad_length,
       -- use nonce from trailer and route’s key
       trailer.nonce, route.preshared_key
-   ) then
+   )
+   or lib.ntohl(body.spi) ~= route.spi then
       counter.add(self.shm.authentication_errors)
       return
    end
 
    local sa = {
       mode = "aes-gcm-128-12",
-      spi = lib.ntohl(body.spi),
+      spi = route.spi,
       key = lib.hexdump(ffi.string(body.key, 16)),
       salt = lib.hexdump(ffi.string(body.salt, 4))
    }
@@ -317,22 +312,19 @@ end
 
 local function store_ephemeral_keys (path, keys)
    local f = assert(io.open(path, "w"), "Unable to open file: "..path)
-   yang.print_data_for_schema(schemata['ephemeral-keys'], {route=keys}, f)
+   yang.print_data_for_schema(schemata['ephemeral-keys'], {sa=keys}, f)
    f:close()
 end
 
--- ephemeral_keys := { { gw_ip4=(IPv4), [ sa=(SA) ] }, ... }
+-- ephemeral_keys := { <id>=(SA), ... }
+
 function KeyManager:commit_ephemeral_keys ()
    local esp_keys, dsp_keys = {}, {}
    for _, route in ipairs(self.routes) do
-      esp_keys[route.id] = {
-         gw_ip4 = route.gw_ip4,
-         sa = (route.status == status.ready) and route.tx_sa or nil
-      }
-      dsp_keys[route.id] = {
-         gw_ip4 = route.gw_ip4,
-         sa = (route.status == status.ready) and route.rx_sa or nil
-      }
+      if route.status == status.ready then
+         esp_keys[route.id] = route.tx_sa
+         dsp_keys[route.id] = route.rx_sa
+      end
    end
    store_ephemeral_keys(self.esp_keyfile, esp_keys)
    store_ephemeral_keys(self.dsp_keyfile, dsp_keys)

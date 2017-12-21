@@ -47,7 +47,8 @@ local conf1 = {
       loopback = {
          net_cidr4 = "192.168.10.0/24",
          gw_ip4 = "203.0.113.1",
-         preshared_key = string.rep("00", 32)
+         preshared_key = string.rep("00", 32),
+         spi = 1001
       }
    }
 }
@@ -70,7 +71,8 @@ local conf2 = {
       loopback = {
          net_cidr4 = "192.168.10.0/24",
          gw_ip4 = "203.0.113.1",
-         preshared_key = string.rep("FF", 32)
+         preshared_key = string.rep("FF", 32),
+         spi = 1001
       }
    }
 }
@@ -89,7 +91,8 @@ local conf3 = {
       loopback = {
          net_cidr4 = "192.168.10.0/24",
          gw_ip4 = "203.0.113.2",
-         preshared_key = string.rep("FF", 32)
+         preshared_key = string.rep("FF", 32),
+         spi = 1001
       }
    }
 }
@@ -106,14 +109,35 @@ local conf4 = {
    public_nexthop_ip4 = "203.0.113.2",
    route = {
       loopback = {
-         net_cidr4 = "192.168.10.0/24",
+         net_cidr4 = "192.168.10.0/16",
          gw_ip4 = "203.0.113.2",
-         preshared_key = string.rep("FF", 32)
+         preshared_key = string.rep("FF", 32),
+         spi = 1001
       }
    }
 }
-print("Change route public_ip4...")
+print("Change public_ip4 and route net_cidr4...")
 commit_conf(conf4)
+S.sleep(3)
+
+local conf5 = {
+   private_interface = { macaddr = "52:54:00:00:00:00" },
+   public_interface = { macaddr = "52:54:00:00:00:FF" },
+   private_ip4 = "192.168.10.1",
+   public_ip4 = "203.0.113.2",
+   private_nexthop_ip4 = "192.168.10.1",
+   public_nexthop_ip4 = "203.0.113.2",
+   route = {
+      loopback2 = {
+         net_cidr4 = "192.168.10.0/16",
+         gw_ip4 = "203.0.113.2",
+         preshared_key = string.rep("FF", 32),
+         spi = 1001
+      }
+   }
+}
+print("Change route id...")
+commit_conf(conf5)
 S.sleep(3)
 
 print("Remove route...")
