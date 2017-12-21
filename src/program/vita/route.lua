@@ -197,10 +197,10 @@ function PublicRouter:push ()
               and self.ip4:checksum_ok()
               and self.ip4
       if ip4 and ip4:protocol() == esp.PROTOCOL then
-         fwd4_packets[fwd4_cursor] = p
+         fwd4_packets[fwd4_cursor] = packet.shiftleft(p, ipv4:sizeof())
          fwd4_cursor = fwd4_cursor + 1
       elseif ip4 and ip4:protocol() == exchange.PROTOCOL then
-         protocol_packets[protocol_cursor] = p
+         protocol_packets[protocol_cursor] = packet.shiftleft(p, ipv4:sizeof())
          protocol_cursor = protocol_cursor + 1
       else
          packet.free(p)
@@ -210,7 +210,7 @@ function PublicRouter:push ()
    end
 
    for i = 0, fwd4_cursor - 1 do
-      self:forward4(packet.shiftleft(fwd4_packets[i], ipv4:sizeof()))
+      self:forward4(fwd4_packets[i])
    end
 
    for i = 0, protocol_cursor - 1 do
