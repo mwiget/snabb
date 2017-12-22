@@ -41,7 +41,7 @@ KeyManager = {
    }
 }
 
-local status = { expired = 0, ready = 2 }
+local status = { expired = 0, rekey = 1, ready = 2 }
 
 function KeyManager:new (conf)
    local o = {
@@ -91,7 +91,7 @@ function KeyManager:reconfig (conf)
             spi = route.spi,
             status = status.expired,
             rx_sa = nil, tx_sa = nil,
-            timeout = nil,
+            sa_timeout = nil, rekey_timeout = nil,
             protocol = Protocol:new(route.spi, new_key, conf.negotiation_ttl)
          }
          table.insert(new_routes, new_route)
@@ -129,7 +129,9 @@ function KeyManager:push ()
       end
       if route.status < status.ready then
          self:negotiate(route)
-      elseif route.timeout() then
+      elseif route.rekey_timeout() then
+         route.status = status.rekey
+      elseif route.sa_timeout() then
          counter.add(self.shm.keypairs_expired)
          audit:log("Keys expired for '"..route.id.."' (sa_ttl)")
          self:expire_route(route)
@@ -224,7 +226,8 @@ function KeyManager:configure_route (route, rx, tx)
       key = lib.hexdump(tx.key),
       salt = lib.hexdump(tx.salt)
    }
-   route.timeout = lib.timeout(self.sa_ttl)
+   route.sa_timeout = lib.timeout(self.sa_ttl)
+   route.rekey_timeout = lib.timeout(self.sa_ttl/2)
    self:commit_ephemeral_keys()
 end
 
@@ -232,7 +235,8 @@ function KeyManager:expire_route (route)
    route.status = status.expired
    route.tx_sa = nil
    route.rx_sa = nil
-   route.timeout = nil
+   route.sa_timeout = nil
+   route.rekey_timeout = nil
    self:commit_ephemeral_keys()
 end
 
