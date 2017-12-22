@@ -2,6 +2,131 @@
 
 module(...,package.seeall)
 
+-- This module handles KEY NEGOTIATION with peers and SA CONFIGURATION, which
+-- includes dynamically reacting to changes to the routes defined in Vita’s
+-- root configuration. For each route defined in the gateway’s configuration a
+-- pair of SAs (inbound and outbound) is negotiated and maintained. On change,
+-- the set of SAs is written to configuration files picked up by the esp_worker
+-- and dsp_worker processes.
+--
+--                          (neg. proto.)
+--                               ||
+--                               ||
+--               <config> --> KeyManager *--> esp_worker
+--                                       |
+--                                       \--> dsp_worker
+
+--
+-- All things considered, this is the hairy part of Vita, as it covers touchy
+-- things such as key generation and expiration, and ultimately presents Vita’s
+-- main exploitation surface. On the upside, this module’s data plane doesn’t
+-- need worry as much about soft real-time requirements as others, as its
+-- generally low-throughput. It can (and should) primarily focus on safety,
+-- and can afford more costly dynamic high-level language features to do so.
+-- At least to the extent where to doesn’t enable low-traffic DoS, that is.
+--
+-- In order to insulate failure, this module is composed of three subsystems:
+--
+--  1. The KeyManager app handles the data plane traffic (key negotiation
+--     requests and responses) and configuration plane changes (react to
+--     configuration changes and generate configurations for negotiated SAs).
+--
+--     It tries its best to avoid clobbering valid SA configurations too. I.e.
+--     SAs whose routes are not changed in a configuration transition are
+--     unaffected by the ensuing re-configuration, allowing for seamless
+--     addition of new routes and network address renumbering.
+--
+--     Whenever SAs are invalidated, i.e. because the route’s pre-shared key or
+--     SPI is changed, or because a route is removed entirely, or because the
+--     lifetime of a SA pair has expired (sa_ttl), it is destroyed, and
+--     eventually re-negotiated if applicable.
+--
+--     Note that the KeyManager app will attempts to re-negotiate SAs long
+--     before they expire (specifically, once half of sa_ttl has passed), in
+--     order to avoid loss of tunnel connectivity during re-negotiation.
+--
+--     Negotiation requests are fed from the input port to the individual
+--     Protocol finite-state machine (described below in 2.) of a route, and
+--     associated to routes via the Transport wrapper (described below in 3.).
+--     Replies and outgoing requests (also obtained by mediating with the
+--     Protocol fsm) are sent via the output port.
+--
+--     Any meaningful events regarding SA negotiation and expiry are logged and
+--     registered in the following counters:
+--
+--        rxerrors                count of all erroneous incoming requests
+--                                (includes all others counters)
+--
+--        route_errors            count of requests that couldn’t be associated
+--                                to any configured route
+--
+--        protocol_errors         count of requests that violated the protocol
+--                                (order of messages and message format)
+--
+--        authentication_errors   count of requests that were detected to be
+--                                unauthentic (had an erroneous MAC, this
+--                                includes packets corrupted during transit)
+--
+--        public_key_errors       count of public keys that were rejected
+--                                because they were considered unsafe
+--
+--        negotiations_initiated  count of negotiations initiated by us
+--
+--        negotiations_expired    count of negotiations expired
+--                                (negotiation_ttl)
+--
+--        nonces_negotiated       count of nonce pairs that were exchanged
+--                                (elevated count can indicate DoS attempts)
+--
+--        keypairs_negotiated     count of ephemeral key pairs that were
+--                                exchanged
+--
+--        keypairs_expired        count of ephemeral key pairs that have
+--                                expired (sa_ttl)
+--
+--  2. The Protocol subsysem implements vita-ske1 (the cryptographic key
+--     exchange protocol defined in README.exchange) as a finite-state machine
+--     with a timeout (negotiation_ttl) in a way that should be mostly DoS
+--     resistant, i.e. it can’t be put into a waiting state by inbound
+--     requests.
+--
+--     For a state transition diagram see: fsm-protocol.svg
+--
+--     Alternatively it has been considered to implement the protocol on top of
+--     a connection based transport protocol (like TCP), i.e. allow multiple
+--     concurrent negotiations for each individual route. Such a protocol
+--     implementation wasn’t immediately available, and implementing one seemed
+--     daunting, and that’s why now each route has just its one own Protocol
+--     fsm.
+--
+--     The Protocol fsm requires its user (the KeyManager app) to “know” about
+--     the state transitions of the exchange protocol, but it is written in a
+--     way that intends to make fatal misuse impossible, given that one sticks
+--     to its public API methods. I.e. it is driven by calling the methods
+--
+--        initiate_exchange
+--        receive_nonce
+--        exchange_key
+--        receive_key
+--        derive_ephemeral_keys
+--        reset_if_expired
+--
+--     which uphold invariants that should ensure any resulting key material is
+--     trustworthy, signal any error conditions to the caller, and maintain
+--     general consistency of the protocol so that it doesn’t get stuck.
+--     Hopefully, the worst consequence of misusing the Protocol fsm is failure
+--     to negotiate a key pair.
+--
+--  3. The Transport header is a super-light transport header that encodes the
+--     target SPI and message type of the protocol requests it precedes. It is
+--     used by the KeyManager app to parse requests and associate them to the
+--     correct route by SPI. It uses the IP protocol type 99 for “any private
+--     encryption scheme”.
+--
+--     It exists explicitly separate from the KeyManager app and Protocol fsm,
+--     to clarify that it is interchangable, and logically unrelated to either
+--     components.
+
 local S = require("syscall")
 local ffi = require("ffi")
 local shm = require("core.shm")
@@ -64,7 +189,8 @@ function KeyManager:reconfig (conf)
       end
    end
    local function route_match (route, preshared_key, spi)
-      return route.spi == spi and lib.equal(route.preshared_key, preshared_key)
+      return lib.equal(route.preshared_key, preshared_key)
+         and route.spi == spi
    end
    local function free_route (route)
       if route.status ~= status.expired then
@@ -114,14 +240,15 @@ function KeyManager:reconfig (conf)
 end
 
 function KeyManager:push ()
+   -- handle negotiation protocol requests
    local input = self.input.input
-
    while not link.empty(input) do
       local request = link.receive(input)
       self:handle_negotiation(request)
       packet.free(request)
    end
 
+   -- process protocol timeouts and initiate (re-)negotiation for SAs
    for _, route in ipairs(self.routes) do
       if route.protocol:reset_if_expired() == Protocol.code.expired then
          counter.add(self.shm.negotiations_expired)
