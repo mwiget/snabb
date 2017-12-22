@@ -140,6 +140,27 @@ print("Change route id...")
 commit_conf(conf5)
 S.sleep(3)
 
+local conf6 = {
+   private_interface = { macaddr = "52:54:00:00:00:00" },
+   public_interface = { macaddr = "52:54:00:00:00:FF" },
+   private_ip4 = "192.168.10.1",
+   public_ip4 = "203.0.113.2",
+   private_nexthop_ip4 = "192.168.10.1",
+   public_nexthop_ip4 = "203.0.113.2",
+   negotiation_ttl = 1,
+   route = {
+      loopback2 = {
+         net_cidr4 = "192.168.10.0/16",
+         gw_ip4 = "203.0.113.2",
+         preshared_key = string.rep("FF", 32),
+         spi = 1001
+      }
+   }
+}
+print("Change negotiation_ttl...")
+commit_conf(conf6)
+S.sleep(3)
+
 print("Remove route...")
 commit_conf(conf0)
 S.sleep(3)

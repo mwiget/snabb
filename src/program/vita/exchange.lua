@@ -208,6 +208,14 @@ function KeyManager:reconfig (conf)
       if old_route and route_match(old_route, new_key, route.spi) then
          -- keep old route
          table.insert(new_routes, old_route)
+         -- if negotation_ttl has changed, swap out old protocol fsm for a new
+         -- one with the adjusted timeout, effectively resetting the fsm
+         if conf.negotiation_ttl ~= self.negotiation_ttl then
+            audit:log("Protocol reset for "..id.." (reconfig)")
+            old_route.protocol = Protocol:new(old_route.spi,
+                                              old_route.preshared_key,
+                                              conf.negotiation_ttl)
+         end
       else
          -- insert new new route
          local new_route = {
@@ -236,6 +244,7 @@ function KeyManager:reconfig (conf)
    self.routes = new_routes
    self.esp_keyfile = shm.root.."/"..shm.resolve(conf.esp_keyfile)
    self.dsp_keyfile = shm.root.."/"..shm.resolve(conf.dsp_keyfile)
+   self.negotiation_ttl = conf.negotiation_ttl
    self.sa_ttl = conf.sa_ttl
 end
 
