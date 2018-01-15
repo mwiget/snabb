@@ -150,7 +150,7 @@ KeyManager = {
       esp_keyfile = {required=true},
       dsp_keyfile = {required=true},
       negotiation_ttl = {default=10},
-      sa_ttl = {default=(7 * 24 * 60 * 60)}
+      sa_ttl = {default=(24 * 60 * 60)}
    },
    shm = {
       rxerrors = {counter},
