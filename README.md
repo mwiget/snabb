@@ -47,11 +47,12 @@ while Vita is running, without affecting unrelated routes.
 
 - Runs on commodity hardware
 - Implements IPsec for IPv4, specifically
-  *IP Encapsulating Security Payload* (ESP) in tunnel mode
+  *IP Encapsulating Security Payload* (ESP) in tunnel mode (audit needed)
 - Uses optimized AES-GCM 128-bit encryption based on a reference
   implementation by *Intel* for their AVX2 (generation-4) processors
 - Suitable for 1-Gigabit, 10-Gigabit (and beyond?) Ethernet
-- Automated key exchange and rotation (work in progress!)
+- Automated key exchange and rotation, with perfect forward secrecy (PFS)
+  (audit needed)
 - Dynamic reconfiguration (update routes while running)
 - Strong observability: access relevant statistics of a running Vita node
 
