@@ -31,6 +31,7 @@ local lib        = require("core.lib")
 local shm        = require("core.shm")
 local yang       = require("lib.yang.yang")
 local alarms     = require("lib.yang.alarms")
+local raw        = require("apps.socket.raw")
 
 local alarm_notification = false
 
@@ -258,64 +259,83 @@ function load_phy(c, conf, v4_nic_name, v6_nic_name, ring_buffer_size)
    link_sink(c,   v4_nic_name..'.'..v4_info.rx, v6_nic_name..'.'..v6_info.rx)
 end
 
+local function net_exists (name)
+   local devices="/sys/class/net"
+   return lwutil.dir_exists(("%s/%s"):format(devices, name))
+end
+
 function load_on_a_stick(c, conf, args)
    local pciaddr, id, queue = lwutil.parse_instance(conf)
-   local device = pci.device_info(pciaddr)
-   local driver = require(device.driver).driver
-   validate_pci_devices({pciaddr})
+   
    lwaftr_app(c, conf, pciaddr)
    local v4_nic_name, v6_nic_name, v4v6, mirror = args.v4_nic_name,
       args.v6_nic_name, args.v4v6, args.mirror
 
-   if v4v6 then
-      assert(queue.external_interface.vlan_tag == queue.internal_interface.vlan_tag)
-      config.app(c, 'nic', driver, {
-         pciaddr = pciaddr,
-         vmdq=true, -- Needed to enable MAC filtering/stamping.
-         rxq=id,
-         txq=id,
-         poolnum=0,
-         vlan=queue.external_interface.vlan_tag,
-         ring_buffer_size=args.ring_buffer_size,
-         macaddr = ethernet:ntop(queue.external_interface.mac)})
-      if mirror then
-         local Tap = require("apps.tap.tap").Tap
-         local ifname = mirror
-         config.app(c, 'tap', Tap, ifname)
-         config.app(c, v4v6, V4V6, {
-            mirror = true
-         })
-         config.link(c, v4v6..'.mirror -> tap.input')
+   if lwutil.nic_exists(pciaddr) then
+      local device = pci.device_info(pciaddr)
+      local driver = require(device.driver).driver
+      validate_pci_devices({pciaddr})
+      if v4v6 then
+         assert(queue.external_interface.vlan_tag == queue.internal_interface.vlan_tag)
+         config.app(c, 'nic', driver, {
+            pciaddr = pciaddr,
+            vmdq=true, -- Needed to enable MAC filtering/stamping.
+            rxq=id,
+            txq=id,
+            poolnum=0,
+            vlan=queue.external_interface.vlan_tag,
+            ring_buffer_size=args.ring_buffer_size,
+            macaddr = ethernet:ntop(queue.external_interface.mac)})
+         if mirror then
+            local Tap = require("apps.tap.tap").Tap
+            local ifname = mirror
+            config.app(c, 'tap', Tap, ifname)
+            config.app(c, v4v6, V4V6, {
+               mirror = true
+            })
+            config.link(c, v4v6..'.mirror -> tap.input')
+         else
+            config.app(c, v4v6, V4V6)
+         end
+         config.link(c, 'nic.'..device.tx..' -> '..v4v6..'.input')
+         config.link(c, v4v6..'.output -> nic.'..device.rx)
+
+         link_source(c, v4v6..'.v4', v4v6..'.v6')
+         link_sink(c, v4v6..'.v4', v4v6..'.v6')
       else
-         config.app(c, v4v6, V4V6)
+         config.app(c, v4_nic_name, driver, {
+            pciaddr = pciaddr,
+            vmdq=true, -- Needed to enable MAC filtering/stamping.
+            rxq=id,
+            txq=id,
+            poolnum=0,
+            vlan=queue.external_interface.vlan_tag,
+            ring_buffer_size=args.ring_buffer_size,
+            macaddr = ethernet:ntop(queue.external_interface.mac)})
+         config.app(c, v6_nic_name, driver, {
+            pciaddr = pciaddr,
+            vmdq=true, -- Needed to enable MAC filtering/stamping.
+            rxq=id,
+            txq=id,
+            poolnum=1,
+            vlan=queue.internal_interface.vlan_tag,
+            ring_buffer_size=args.ring_buffer_size,
+            macaddr = ethernet:ntop(queue.internal_interface.mac)})
+
+         link_source(c, v4_nic_name..'.'..device.tx, v6_nic_name..'.'..device.tx)
+         link_sink(c,   v4_nic_name..'.'..device.rx, v6_nic_name..'.'..device.rx)
       end
-      config.link(c, 'nic.'..device.tx..' -> '..v4v6..'.input')
-      config.link(c, v4v6..'.output -> nic.'..device.rx)
-
-      link_source(c, v4v6..'.v4', v4v6..'.v6')
-      link_sink(c, v4v6..'.v4', v4v6..'.v6')
-   else
-      config.app(c, v4_nic_name, driver, {
-         pciaddr = pciaddr,
-         vmdq=true, -- Needed to enable MAC filtering/stamping.
-         rxq=id,
-         txq=id,
-         poolnum=0,
-         vlan=queue.external_interface.vlan_tag,
-         ring_buffer_size=args.ring_buffer_size,
-         macaddr = ethernet:ntop(queue.external_interface.mac)})
-      config.app(c, v6_nic_name, driver, {
-         pciaddr = pciaddr,
-         vmdq=true, -- Needed to enable MAC filtering/stamping.
-         rxq=id,
-         txq=id,
-         poolnum=1,
-         vlan=queue.internal_interface.vlan_tag,
-         ring_buffer_size=args.ring_buffer_size,
-         macaddr = ethernet:ntop(queue.internal_interface.mac)})
-
-      link_source(c, v4_nic_name..'.'..device.tx, v6_nic_name..'.'..device.tx)
-      link_sink(c,   v4_nic_name..'.'..device.rx, v6_nic_name..'.'..device.rx)
+   else 
+      print(("trying net device %s"):format(pciaddr))
+      if net_exists(pciaddr) then
+         local device = pciaddr
+         local driver = raw.RawSocket
+         config.app(c, v6_nic_name, driver, device)
+         config.app(c, v4_nic_name, driver, device)
+         link_source(c, v4_nic_name..'.tx', v6_nic_name..'.tx')
+         link_sink(c,   v4_nic_name..'.rx', v6_nic_name..'.rx')
+         print(("net device %s"):format(device))
+      end
    end
 end
 
