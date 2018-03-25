@@ -14,9 +14,11 @@ local interlink = require("lib.interlink")
 local Receiver = require("apps.interlink.receiver")
 local Transmitter = require("apps.interlink.transmitter")
 local intel_mp = require("apps.intel_mp.intel_mp")
+local raw = require("apps.socket.raw")
 local numa = require("lib.numa")
 local yang = require("lib.yang.yang")
 local C = require("ffi").C
+local S = require("syscall")
 local usage = require("program.vita.README_inc")
 local confighelp = require("program.vita.README_config_inc")
 
@@ -184,10 +186,29 @@ function configure_public_router (conf, append)
    return c, public_links
 end
 
+local function dir_exists(path)
+  local stat = S.stat(path)
+  return stat and stat.isdir
+end
+
+local function net_exists (pci_addr)
+  local devices="/sys/class/net"
+  return dir_exists(("%s/%s"):format(devices, pci_addr))
+end
+
 function configure_private_router_with_nic (conf, append)
    conf = lib.parse(conf, confspec)
 
-   numa.check_affinity_for_pci_addresses({conf.private_interface.pciaddr})
+   local driver, device
+   if net_exists(conf.private_interface.pciaddr) then
+     driver = raw.RawSocket
+     device = conf.private_interface.pciaddr
+     print("Use linux device ".. device)
+   else
+     driver = intel_mp.Intel
+     device = conf.private_interface
+     numa.check_affinity_for_pci_addresses({conf.private_interface.pciaddr})
+   end
 
    local c, private =
       configure_private_router(conf, append or config.new())
@@ -199,7 +220,7 @@ function configure_private_router_with_nic (conf, append)
 
    conf.private_interface.vmdq = true
 
-   config.app(c, "PrivateNIC", intel_mp.Intel, conf.private_interface)
+   config.app(c, "PrivateNIC", driver, device)
    config.link(c, "PrivateNIC.output -> "..private.input)
    config.link(c, private.output.." -> PrivateNIC.input")
 
@@ -209,14 +230,23 @@ end
 function configure_public_router_with_nic (conf, append)
    conf = lib.parse(conf, confspec)
 
-   numa.check_affinity_for_pci_addresses({conf.public_interface.pciaddr})
 
    local c, public =
       configure_public_router(conf, append or config.new())
 
-   conf.public_interface.vmdq = true
+   local driver, device
+   if net_exists(conf.public_interface.pciaddr) then
+     driver = raw.RawSocket
+     device = conf.public_interface.pciaddr
+     print("Use linux device ".. device)
+   else
+     driver = intel_mp.Intel
+     device = conf.public_interface
+     conf.public_interface.vmdq = true
+     numa.check_affinity_for_pci_addresses({conf.public_interface.pciaddr})
+   end
 
-   config.app(c, "PublicNIC", intel_mp.Intel, conf.public_interface)
+   config.app(c, "PublicNIC", driver, device)
    config.link(c, "PublicNIC.output -> "..public.input)
    config.link(c, public.output.." -> PublicNIC.input")
 

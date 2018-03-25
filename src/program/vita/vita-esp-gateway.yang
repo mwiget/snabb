@@ -7,9 +7,7 @@ module vita-esp-gateway {
   import vita-ephemeral-keys { prefix ephemeral-keys; }
 
   typedef pci-address {
-    type string {
-      pattern '([0-9a-fA-F]{4}:)?[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]';
-    }
+    type string;
   }
   typedef key32 { type string { pattern '([0-9a-fA-F]{2}\s*){32}'; } }
   typedef time-to-live { type uint32 { range "1..max"; } }
