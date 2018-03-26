@@ -199,20 +199,9 @@ end
 function configure_private_router_with_nic (conf, append)
    conf = lib.parse(conf, confspec)
 
-   local driver, device
-   if net_exists(conf.private_interface.pciaddr) then
-     driver = raw.RawSocket
-     device = conf.private_interface.pciaddr
-     print("Use linux device ".. device)
-   else
-     driver = intel_mp.Intel
-     device = conf.private_interface
-     numa.check_affinity_for_pci_addresses({conf.private_interface.pciaddr})
-   end
-
    local c, private =
       configure_private_router(conf, append or config.new())
-
+   
    -- Gracious limit for user defined MTU on private interface to avoid packet
    -- payload overun due to ESP tunnel overhead.
    conf.private_interface.mtu =
@@ -220,9 +209,17 @@ function configure_private_router_with_nic (conf, append)
 
    conf.private_interface.vmdq = true
 
-   config.app(c, "PrivateNIC", driver, device)
-   config.link(c, "PrivateNIC.output -> "..private.input)
-   config.link(c, private.output.." -> PrivateNIC.input")
+   if net_exists(conf.private_interface.pciaddr) then
+     config.app(c, "PrivateNIC", raw.RawSocket, conf.private_interface.pciaddr)
+     config.link(c, "PrivateNIC.output -> "..private.input)
+     config.link(c, private.output.." -> PrivateNIC.input")
+     print("Use linux device ".. conf.public_interface.pciaddr)
+   else
+     numa.check_affinity_for_pci_addresses({conf.private_interface.pciaddr})
+     config.app(c, "PrivateNIC", intel_mp.Intel, conf.private_interface)
+     config.link(c, "PrivateNIC.output -> "..private.input)
+     config.link(c, private.output.." -> PrivateNIC.input")
+   end
 
    return c
 end
@@ -230,25 +227,21 @@ end
 function configure_public_router_with_nic (conf, append)
    conf = lib.parse(conf, confspec)
 
-
    local c, public =
       configure_public_router(conf, append or config.new())
 
-   local driver, device
    if net_exists(conf.public_interface.pciaddr) then
-     driver = raw.RawSocket
-     device = conf.public_interface.pciaddr
-     print("Use linux device ".. device)
+     config.app(c, "PublicNIC", raw.RawSocket, conf.public_interface.pciaddr)
+     config.link(c, "PublicNIC.tx -> "..public.input)
+     config.link(c, public.output.." -> PublicNIC.rx")
+     print("Use linux device ".. conf.public_interface.pciaddr)
    else
-     driver = intel_mp.Intel
-     device = conf.public_interface
      conf.public_interface.vmdq = true
      numa.check_affinity_for_pci_addresses({conf.public_interface.pciaddr})
+     config.app(c, "PublicNIC", intel_mp.Intel, conf.public_interface)
+     config.link(c, "PublicNIC.output -> "..public.input)
+     config.link(c, public.output.." -> PublicNIC.input")
    end
-
-   config.app(c, "PublicNIC", driver, device)
-   config.link(c, "PublicNIC.output -> "..public.input)
-   config.link(c, public.output.." -> PublicNIC.input")
 
    return c
 end
