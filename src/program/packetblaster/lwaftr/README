@@ -22,6 +22,14 @@ Usage: packetblaster lwaftr [OPTIONS]
   --dst_mac DESTINATION Destination MAC-Address
                         Default: 00:00:00:00:00:00
 
+  --pass_tap TAP_INTERFACE
+  --pass_mac DESTINATION
+                        Allows to connect a Tap interface to packetblaster
+                        that passes traffic bi-directionally between the PCI
+                        physical interface and this Tap interface. The MAC
+                        address can either be the one assigned to the Tap
+                        interface or any device reachable via the Tap interface.
+                        
   --size SIZES          A comma separated list of numbers. Send packets whose
                         frames are SIZES bytes long.  The frame size includes
                         the size of the packet, including its ethernet

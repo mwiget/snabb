@@ -36,7 +36,9 @@ local long_opts = {
    rate         = "r",    -- rate in MPPS (0 => listen only)
    v4only       = "4",    -- generate only public IPv4 traffic
    v6only       = "6",    -- generate only public IPv6 encapsulated traffic
-   pcap         = "o"     -- output packet to the pcap file
+   pcap         = "o",    -- output packet to the pcap file
+   pass_tap     = "T",    -- passthru tap interface (when using pci)
+   pass_mac     = "M"     -- mac address to passthru tap interface
 }
 
 local function dir_exists(path)
@@ -151,7 +153,17 @@ function run (args)
       single_pass = true
    end
 
-   args = lib.dogetopt(args, opt, "VD:hS:s:a:d:b:iI:c:r:46p:v:o:t:i:k:", long_opts)
+   local passthru_interface
+   function opt.T (arg) 
+      passthru_interface = arg
+   end
+
+   local passthru_mac
+   function opt.M (arg) 
+      passthru_mac = arg
+   end
+
+   args = lib.dogetopt(args, opt, "VD:hS:s:a:d:b:iI:c:r:46p:v:o:t:i:k:T:M:", long_opts)
 
    for _,s in ipairs(sizes) do
       if s < 18 + (vlan and 4 or 0) + 20 + 8 then
@@ -162,6 +174,35 @@ function run (args)
    if not target then
       print("either --pci, --tap, --sock, --int or --pcap are required parameters")
       main.exit(1)
+   end
+
+   if passthru_mac or passthru_interface then
+      if not passthru_mac then
+         print("--passthru_mac required with --passthru_interface")
+      end
+      if not passthru_interface then
+         print("--passthru_interface required with --passthru_mac")
+      end
+      if not pciaddr then
+         print("--pci required to use passthru")
+      end
+      local device_info = pci.device_info(pciaddr)
+      print("passthru_mac=" .. passthru_mac)
+      config.app(c, 'pass', require(device_info.driver).driver, {
+         pciaddr = pciaddr,
+         vmdq=true,
+         poolnum=1,
+         vlan=vlan,
+         mtu=9500,
+         macaddr = passthru_mac})
+
+         local Passthru = require("apps.tap.tap").Tap
+         config.app(c, 'thru', Passthru, {
+            name=passthru_interface,
+            mtu=9014
+         })
+         config.link(c, 'pass.'..device_info.tx..' -> thru.input')
+         config.link(c, 'thru.output -> pass.'..device_info.rx)
    end
 
    print(string.format("packetblaster lwaftr: Sending %d clients at %.3f MPPS to %s", count, rate, target))
