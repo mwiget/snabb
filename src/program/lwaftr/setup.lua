@@ -364,6 +364,33 @@ function load_on_a_stick(c, conf, args)
       link_source(c, v4_nic_name..'.'..device.tx, v6_nic_name..'.'..device.tx)
       link_sink(c,   v4_nic_name..'.'..device.rx, v6_nic_name..'.'..device.rx)
    end
+
+   if queue.passthru_interface and queue.passthru_interface.device then
+      local poolnum = 2
+      if v4v6 then
+         poolnum = 1
+      end
+      config.app(c, 'pass', driver, {
+         pciaddr = pciaddr,
+         vmdq = true,
+         rxq = id,
+         txq = id,
+         poolnum = poolnum,
+         vlan = queue.passthru_interface.vlan_tag,
+         ring_buffer_size = args.ring_buffer_size,
+         rxcounter = id,
+         txcounter = id,
+         mtu = queue.passthru_interface.mtu,
+         macaddr = ethernet:ntop(queue.passthru_interface.mac)})
+
+      local Passthru = require("apps.tap.tap").Tap
+      config.app(c, 'thru', Passthru, {
+         name = queue.passthru_interface.device,
+         mtu = queue.passthru_interface.mtu + 14   -- App asserts if mismatch found
+      })
+      config.link(c, 'pass.'..device.tx..' -> thru.input')
+      config.link(c, 'thru.output -> pass.'..device.rx)
+   end
 end
 
 function load_virt(c, conf, v4_nic_name, v6_nic_name)

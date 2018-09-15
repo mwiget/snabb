@@ -376,6 +376,49 @@ be handled by the same lwAFTR instance, provided the router's ECMP
 function also performs a similarly deterministic function to choose the
 device to which to send the packets.
 
+## passthru-interface configuration
+
+Each device queue configuration can be augmented with a passthru-interface
+configuration to add a VMDq logical interface with a MAC address and VLAN,
+passing traffic transparently between the physical interface and the 
+specified Tap interface. An example of a on-a-stick configuration:
+
+```
+instance {
+   device "03:00.0";
+   queue {
+      id 0;
+      external-interface {
+         ip 172.20.0.100;
+         mac 02:22:22:22:22:22;
+         next-hop {
+            ip 172.20.0.1;
+         }
+      }
+      internal-interface {
+         ip 2001:db8::100;
+         mac 02:22:22:22:22:22;
+         next-hop {
+            ip 2001:db8::1;
+         }
+      }
+      passthru-interface {
+         device xe0;
+         mac aa:ce:a3:dc:57:87;
+         mtu 9000;
+      }
+   }
+}
+```
+
+Broadcast and unicast Packets received on the physical interface matching 
+the configured destination mac address on the passthru-interface are sent 
+to the configured tap interface. Any packet received by the Tap interface
+is sent to the physical interface. 
+
+Depending on the use case, the mac address can be the one of the Tap 
+interface or from a device behind the Tap interface.
+
 ## Run-time reconfiguration
 
 See [`snabb config`](../../config/README.md) for a general overview of
