@@ -383,13 +383,10 @@ function load_on_a_stick(c, conf, args)
          mtu = queue.passthru_interface.mtu,
          macaddr = ethernet:ntop(queue.passthru_interface.mac)})
 
-      local Passthru = require("apps.tap.tap").Tap
-      config.app(c, 'thru', Passthru, {
-         name = queue.passthru_interface.device,
-         mtu = queue.passthru_interface.mtu + 14   -- App asserts if mismatch found
-      })
-      config.link(c, 'pass.'..device.tx..' -> thru.input')
-      config.link(c, 'thru.output -> pass.'..device.rx)
+      local Passthru = require("apps.socket.raw").RawSocket
+      config.app(c, 'thru', Passthru, queue.passthru_interface.device)
+      config.link(c, 'pass.'..device.tx..' -> thru.rx')
+      config.link(c, 'thru.tx -> pass.'..device.rx)
    end
 end
 
