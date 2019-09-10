@@ -11,14 +11,23 @@ local counter = require("core.counter")
 local ethernet = require("lib.protocol.ethernet")
 local ffi = require("ffi")
 local C = ffi.C
+local lib = require("core.lib")
+local macaddress = require("lib.macaddress")
 
 local c, t = S.c, S.types.t
 
 RawSocket = {}
 
-function RawSocket:new (ifname)
-   assert(ifname)
+function RawSocket:new (conf)
+   -- Backwards compatibility
+   local ifname
+   if type(conf) == "string" then
+      ifname = conf
+   else
+      ifname = conf.name
+   end
    local index, err = S.util.if_nametoindex(ifname)
+   print("RawSocket:new ifname=" .. ifname)
    if not index then error(err) end
 
    local tp = h.htons(c.ETH_P["ALL"])
@@ -35,6 +44,10 @@ function RawSocket:new (ifname)
       sock:close()
       error(err)
    end
+
+   local fn = "/sys/class/net/" .. ifname .. "/address"
+   local macaddr = lib.readfile(fn, "*l")
+
    return setmetatable({sock = sock,
                         rx_p = packet.allocate(),
                         shm  = { rxbytes   = {counter},
@@ -44,7 +57,9 @@ function RawSocket:new (ifname)
                                  txbytes   = {counter},
                                  txpackets = {counter},
                                  txmcast   = {counter},
-                                 txbcast   = {counter} }},
+                                 txbcast   = {counter},
+                                 macaddr   = {counter, macaddress:new(macaddr).bits}
+                              }},
                        {__index = RawSocket})
 end
 

@@ -235,6 +235,15 @@ local driver_helpers = {
       end,
       config = function () return {} end
    },
+   ['apps.socket.raw.RawSocket'] = {
+      link_names = function ()
+         return 'rx', 'tx'
+      end,
+      stats_path = function (intf)
+         return 'apps/'..intf.app:name()
+      end,
+      config = function () return {} end
+   },
 }
 
 -- Mapping of address family identifiers to classes
